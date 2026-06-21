@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { connectDB, User, Group, Bill, BillItem, BillPayee, IUser, IBillPayee, IBill, generateInviteCode } from './db';
 import { encryptPII, decryptPII } from './lib/crypto';
 import { simplifyDebts } from './lib/settle';
+import { computeEqualSplit, computeManualSplit } from './lib/bill';
 
 // PII encryption helpers (AES-256-GCM) live in ./lib/crypto (shared with tests).
 
@@ -881,11 +882,10 @@ const app = new Elysia()
       let billPayeeEntries: { payeeId: mongoose.Types.ObjectId; amount: number }[] = [];
       let manualItemsToCreate: { name: string; price: number; payeeIds: mongoose.Types.ObjectId[] }[] = [];
 
-      // Pro-rate factor: Service charge then VAT
+      // Discount / service-charge / VAT inputs (math lives in lib/bill.ts)
       const vatVal = parseFloat(vatPercent) || 0;
       const scVal = parseFloat(serviceChargePercent) || 0;
       const discountVal = Math.max(0, parseFloat(b.discountAmount) || 0);
-      const taxFactor = (1 + scVal / 100) * (1 + vatVal / 100);
 
       if (splitMethod === 'equal') {
         const baseAmount = parseFloat(b.subtotal);
@@ -893,11 +893,8 @@ const app = new Elysia()
           set.status = 400;
           return { error: 'Invalid bill subtotal' };
         }
-
         subtotal = baseAmount;
-        const effectiveSubtotal = Math.max(0, subtotal - discountVal);
-        totalAmount = parseFloat((effectiveSubtotal * taxFactor).toFixed(2));
-        
+
         const payeeLineIds = b.payeeLineIds || [];
         if (payeeLineIds.length === 0) {
           set.status = 400;
@@ -906,13 +903,11 @@ const app = new Elysia()
 
         // Resolve payees to Mongo ObjectIds
         const payees = await User.find({ lineId: { $in: payeeLineIds } });
-        const share = parseFloat((totalAmount / payees.length).toFixed(2));
+        const split = computeEqualSplit(baseAmount, discountVal, scVal, vatVal, payees.length);
+        totalAmount = split.total;
 
         for (const payee of payees) {
-          billPayeeEntries.push({
-            payeeId: payee._id as any,
-            amount: share
-          });
+          billPayeeEntries.push({ payeeId: payee._id as any, amount: split.share });
         }
       } else if (splitMethod === 'manual') {
         const items = b.items || [];
@@ -921,7 +916,7 @@ const app = new Elysia()
           return { error: 'At least one item is required for manual split' };
         }
 
-        // Keep track of total share per payee
+        // Base (pre discount/tax) share per payee, accumulated from items
         const payeeSharesMap: { [payeeId: string]: number } = {};
 
         for (const item of items) {
@@ -954,14 +949,12 @@ const app = new Elysia()
           });
         }
 
-        const discountRatio = subtotal > 0 ? Math.max(0, subtotal - discountVal) / subtotal : 1;
-        totalAmount = parseFloat((subtotal * discountRatio * taxFactor).toFixed(2));
-
-        // Create individual payee settlements with discount + tax pro-rated
-        for (const [pidStr, baseShare] of Object.entries(payeeSharesMap)) {
+        const split = computeManualSplit(payeeSharesMap, subtotal, discountVal, scVal, vatVal);
+        totalAmount = split.total;
+        for (const [pidStr, amount] of Object.entries(split.amounts)) {
           billPayeeEntries.push({
             payeeId: new mongoose.Types.ObjectId(pidStr),
-            amount: parseFloat((baseShare * discountRatio * taxFactor).toFixed(2))
+            amount
           });
         }
       } else {
