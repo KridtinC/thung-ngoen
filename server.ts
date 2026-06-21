@@ -2,41 +2,12 @@ import { Elysia, t, redirect } from 'elysia';
 import { staticPlugin } from '@elysiajs/static';
 import { readFileSync } from 'node:fs';
 import mongoose from 'mongoose';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { connectDB, User, Group, Bill, BillItem, BillPayee, IUser, IBillPayee, IBill, generateInviteCode } from './db';
+import { encryptPII, decryptPII } from './lib/crypto';
+import { simplifyDebts } from './lib/settle';
 
-// ----------------------------------------------------
-// PII Encryption helpers (AES-256-GCM)
-// Format stored: iv_hex:tag_hex:ciphertext_hex
-// Falls back to plaintext if ENCRYPTION_KEY is unset.
-// ----------------------------------------------------
-const ENC_KEY = process.env.ENCRYPTION_KEY
-  ? Buffer.from(process.env.ENCRYPTION_KEY, 'hex')
-  : null;
-
-function encryptPII(plaintext: string): string {
-  if (!ENC_KEY || !plaintext) return plaintext;
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', ENC_KEY, iv);
-  const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `${iv.toString('hex')}:${tag.toString('hex')}:${enc.toString('hex')}`;
-}
-
-function decryptPII(ciphertext: string): string {
-  if (!ENC_KEY || !ciphertext) return ciphertext;
-  // Not encrypted (legacy plain value — no colons)
-  const parts = ciphertext.split(':');
-  if (parts.length !== 3) return ciphertext;
-  try {
-    const [ivHex, tagHex, encHex] = parts;
-    const decipher = createDecipheriv('aes-256-gcm', ENC_KEY, Buffer.from(ivHex, 'hex'));
-    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-    return decipher.update(Buffer.from(encHex, 'hex')).toString('utf8') + decipher.final('utf8');
-  } catch {
-    return ciphertext; // decryption failed — return as-is
-  }
-}
+// PII encryption helpers (AES-256-GCM) live in ./lib/crypto (shared with tests).
 
 // ----------------------------------------------------
 // R2 Object Storage (Cloudflare) — for payment slip uploads
@@ -742,49 +713,11 @@ const app = new Elysia()
         }
       }
 
-      // Simplify Debts Algorithm
-      const debtors: { id: string; balance: number; name: string }[] = [];
-      const creditors: { id: string; balance: number; name: string }[] = [];
-
-      for (const member of members) {
-        const idStr = member._id.toString();
-        const bal = balanceMap[idStr] || 0;
-        if (bal < -0.01) {
-          debtors.push({ id: idStr, balance: bal, name: member.displayName });
-        } else if (bal > 0.01) {
-          creditors.push({ id: idStr, balance: bal, name: member.displayName });
-        }
-      }
-
-      // Sort debtors ascending (most negative first) and creditors descending (most positive first)
-      debtors.sort((a, b) => a.balance - b.balance);
-      creditors.sort((a, b) => b.balance - a.balance);
-
-      const transactions: { from: string; fromName: string; to: string; toName: string; amount: number }[] = [];
-      
-      let dIdx = 0;
-      let cIdx = 0;
-
-      while (dIdx < debtors.length && cIdx < creditors.length) {
-        const debtor = debtors[dIdx];
-        const creditor = creditors[cIdx];
-
-        const amountToPay = Math.min(Math.abs(debtor.balance), creditor.balance);
-        
-        transactions.push({
-          from: debtor.id,
-          fromName: debtor.name,
-          to: creditor.id,
-          toName: creditor.name,
-          amount: parseFloat(amountToPay.toFixed(2))
-        });
-
-        debtor.balance += amountToPay;
-        creditor.balance -= amountToPay;
-
-        if (Math.abs(debtor.balance) < 0.01) dIdx++;
-        if (creditor.balance < 0.01) cIdx++;
-      }
+      // Simplify debts into the minimal set of transfers (pure helper, unit-tested)
+      const transactions = simplifyDebts(
+        members.map(m => ({ id: m._id.toString(), name: m.displayName })),
+        balanceMap
+      );
 
       // Decrypt PII fields before sending to client
       const groupObj = group.toObject();
