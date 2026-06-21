@@ -1,12 +1,13 @@
 import { Elysia, t } from 'elysia';
 import { staticPlugin } from '@elysiajs/static';
-import { readFileSync } from 'node:fs';
 import mongoose from 'mongoose';
 import { connectDB, User, Group, Bill, BillItem, BillPayee, IUser, IBillPayee, IBill, generateInviteCode } from './db';
-import { encryptPII, decryptPII } from './lib/crypto';
+import { decryptPII } from './lib/crypto';
 import { simplifyDebts } from './lib/settle';
 import { computeEqualSplit, computeManualSplit } from './lib/bill';
 import { slips } from './src/server/modules/slips';
+import { staticRoutes } from './src/server/modules/static';
+import { users } from './src/server/modules/users';
 
 // PII encryption helpers (AES-256-GCM) live in ./lib/crypto (shared with tests).
 // Slip storage (Cloudflare R2) lives in ./src/server/modules/slips.
@@ -246,17 +247,8 @@ async function syncGroupMembers(lineGroupId: string) {
 }
 
 const app = new Elysia()
-  // Serve index.html explicitly with no-cache headers so LINE WebView never serves stale HTML
-  .get('/', ({ set }) => {
-    set.headers['Cache-Control'] = 'no-store, must-revalidate';
-    set.headers['Content-Type'] = 'text/html; charset=utf-8';
-    return readFileSync('./public/index.html');
-  })
-  .get('/index.html', ({ set }) => {
-    set.headers['Cache-Control'] = 'no-store, must-revalidate';
-    set.headers['Content-Type'] = 'text/html; charset=utf-8';
-    return readFileSync('./public/index.html');
-  })
+  // HTML + health/config routes (no-store index) — before staticPlugin so it wins
+  .use(staticRoutes)
 
   // Serve remaining static assets (CSS, JS, images) — versioned via ?v= so browser cache is fine
   .use(staticPlugin({
@@ -266,6 +258,7 @@ const app = new Elysia()
 
   // Feature modules (Elysia best practice: 1 instance = 1 controller)
   .use(slips)
+  .use(users)
 
   // ----------------------------------------------------
   // LINE Webhook Endpoint
@@ -464,8 +457,6 @@ const app = new Elysia()
   // ----------------------------------------------------
 
   // Health check for Fly.io (also confirms DB connection)
-  .get('/health', () => ({ status: 'ok', db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' }))
-
   // Debug: check what LINE API returns for a group's member IDs
   .get('/api/debug/group/:groupId/members', async ({ params: { groupId } }) => {
     if (!process.env.LINE_CHANNEL_ACCESS_TOKEN) return { error: 'No LINE token configured' };
@@ -474,11 +465,6 @@ const app = new Elysia()
     const summary = await lineGet(`/v2/bot/group/${groupId}/summary`);
     return { groupId, summary, memberCount: count, memberIds: ids };
   })
-
-  // Frontend config (LIFF ID etc.)
-  .get('/api/config', () => ({
-    liffId: process.env.LINE_LIFF_ID || 'mock-liff-id'
-  }))
 
   // ----------------------------------------------------
   // "My Groups" + manual group management
@@ -1211,44 +1197,6 @@ const app = new Elysia()
   })
 
   // Get user profile (including decrypted promptPay)
-  .get('/api/users/:lineId', async ({ params: { lineId }, set }) => {
-    try {
-      const user = await User.findOne({ lineId });
-      if (!user) { set.status = 404; return { error: 'User not found' }; }
-      const u = user.toObject() as any;
-      if (u.promptPay) u.promptPay = decryptPII(u.promptPay);
-      return { user: u };
-    } catch (err) {
-      console.error(err);
-      set.status = 500;
-      return { error: 'Internal Server Error' };
-    }
-  })
-
-  // Set user's PromptPay information
-  .post('/api/users/:lineId/payment-info', async ({ params: { lineId }, body, set }) => {
-    try {
-      const { promptPay } = body as any;
-      
-      const user = await User.findOneAndUpdate(
-        { lineId },
-        { promptPay: promptPay ? encryptPII(promptPay.trim()) : '' },
-        { new: true }
-      );
-
-      if (!user) {
-        set.status = 404;
-        return { error: 'User not found' };
-      }
-
-      return { success: true, user };
-    } catch (err) {
-      console.error(err);
-      set.status = 500;
-      return { error: 'Internal Server Error' };
-    }
-  })
-
   // Leave a group
   .post('/api/groups/:groupId/leave', async ({ params: { groupId }, body, set }) => {
     try {
