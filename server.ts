@@ -8,6 +8,8 @@ import { computeEqualSplit, computeManualSplit } from './lib/bill';
 import { slips } from './src/server/modules/slips';
 import { staticRoutes } from './src/server/modules/static';
 import { users } from './src/server/modules/users';
+import { LineService } from './src/server/modules/line/service';
+import { GroupService } from './src/server/modules/groups/service';
 
 // PII encryption helpers (AES-256-GCM) live in ./lib/crypto (shared with tests).
 // Slip storage (Cloudflare R2) lives in ./src/server/modules/slips.
@@ -28,7 +30,7 @@ setInterval(async () => {
       const liffId = process.env.LINE_LIFF_ID || '';
       const groups = await Group.find({ lineGroupId: { $exists: true, $ne: '' } });
       for (const group of groups) {
-        await sendGroupReminders(group, liffId).catch(err => console.error(`Reminder failed for ${group.name}:`, err));
+        await LineService.sendGroupReminders(group, liffId).catch(err => console.error(`Reminder failed for ${group.name}:`, err));
       }
     }
   } catch (err) {
@@ -36,215 +38,6 @@ setInterval(async () => {
   }
 }, 60_000);
 
-// ----------------------------------------------------
-// LINE push helper
-// ----------------------------------------------------
-async function linePush(to: string, messages: any[]) {
-  if (!process.env.LINE_CHANNEL_ACCESS_TOKEN || !to) return;
-  await fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
-    },
-    body: JSON.stringify({ to, messages })
-  }).catch(err => console.error('linePush error:', err));
-}
-
-// Thai short-month date format, e.g. "14 มิ.ย."
-function formatDateThai(dateStr: string): string {
-  const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-  const d = new Date(dateStr + 'T12:00:00');
-  return `${d.getDate()} ${months[d.getMonth()]}`;
-}
-
-// Build a Flex bubble summarising ALL unpaid bills on one date
-function buildDayReminderBubble(
-  dateStr: string,
-  billSummaries: { name: string; totalAmount: number; payer: string; unpaidPayees: { displayName: string; amount: number }[] }[],
-  liffId: string,
-  inviteCode: string
-): any {
-  const dateLabel = formatDateThai(dateStr);
-  const liffUrl = `https://liff.line.me/${liffId}?invite=${inviteCode}`;
-
-  const uniquePeople = new Set<string>();
-  let totalUnpaid = 0;
-  billSummaries.forEach(b => b.unpaidPayees.forEach(p => { uniquePeople.add(p.displayName); totalUnpaid += p.amount; }));
-
-  const bodyContents: any[] = [];
-  billSummaries.forEach((bill, i) => {
-    if (i > 0) bodyContents.push({ type: 'separator', margin: 'md' });
-    bodyContents.push({
-      type: 'box', layout: 'horizontal', margin: i === 0 ? 'none' : 'md',
-      contents: [
-        { type: 'text', text: bill.name, flex: 4, size: 'sm', weight: 'bold', color: '#333333', wrap: true },
-        { type: 'text', text: `฿${bill.totalAmount.toFixed(0)}`, flex: 2, size: 'sm', align: 'end', color: '#555555' }
-      ]
-    });
-    bodyContents.push({ type: 'text', text: `เรียกเก็บโดย ${bill.payer}`, size: 'xxs', color: '#999999', margin: 'xs' });
-    bill.unpaidPayees.forEach(p => {
-      bodyContents.push({
-        type: 'box', layout: 'horizontal', margin: 'xs',
-        contents: [
-          { type: 'text', text: `❌ ${p.displayName}`, flex: 4, size: 'xs', color: '#E53935' },
-          { type: 'text', text: `${p.amount.toFixed(0)}`, flex: 2, size: 'xs', align: 'end', color: '#E53935', weight: 'bold' }
-        ]
-      });
-    });
-  });
-
-  return {
-    type: 'bubble',
-    header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#129cb4', paddingAll: '20px',
-      contents: [
-        { type: 'text', text: `🐾 ${dateLabel}`, color: '#FFFFFF', size: 'xl', weight: 'bold' },
-        { type: 'text', text: `${uniquePeople.size} คนยังไม่จ่ายเมี้ยว • รวม ฿${totalUnpaid.toFixed(0)}`, color: '#FFFFFFCC', size: 'xs', margin: 'sm' }
-      ]
-    },
-    body: { type: 'box', layout: 'vertical', paddingAll: '16px', contents: bodyContents },
-    footer: {
-      type: 'box', layout: 'vertical',
-      contents: [{ type: 'button', style: 'primary', color: '#129cb4', action: { type: 'uri', label: 'จ่ายเงินเมี้ยว 🐾', uri: liffUrl } }]
-    }
-  };
-}
-
-// Collect unpaid bill summaries for a group (optionally filtered to one date)
-// and push the Flex Message to the LINE group. Returns { sent, dateCount }.
-async function sendGroupReminders(group: any, liffId: string, targetDate?: string): Promise<{ sent: boolean; dateCount?: number; reason?: string }> {
-  const query: any = { groupId: group._id, status: { $ne: 'cancelled' } };
-  if (targetDate) query.date = targetDate;
-
-  const bills = await Bill.find(query).populate('payerId').sort({ date: 1 });
-
-  // Group bills by date, keeping only those with unpaid (non-payer) payees
-  const dateMap = new Map<string, { name: string; totalAmount: number; payer: string; unpaidPayees: { displayName: string; amount: number }[] }[]>();
-  for (const bill of bills) {
-    const payer = bill.payerId as any as IUser;
-    const unpaidEntries = await BillPayee.find({ billId: bill._id, status: 'unpaid' }).populate('payeeId');
-    const unpaidPayees = unpaidEntries
-      .filter((e: any) => e.payeeId._id.toString() !== (payer._id as any).toString())
-      .map((e: any) => ({ displayName: e.payeeId.displayName, amount: e.amount }));
-    if (unpaidPayees.length === 0) continue;
-    if (!dateMap.has(bill.date)) dateMap.set(bill.date, []);
-    dateMap.get(bill.date)!.push({ name: bill.name, totalAmount: bill.totalAmount, payer: payer.displayName, unpaidPayees });
-  }
-
-  if (dateMap.size === 0) return { sent: false, reason: 'All payees have already paid' };
-
-  const bubbles = Array.from(dateMap.entries()).map(([date, summaries]) =>
-    buildDayReminderBubble(date, summaries, liffId, group.inviteCode)
-  );
-
-  const altText = targetDate
-    ? `เหมียว~ ถุงเงินมาทวงค่าใช้จ่ายวันที่ ${formatDateThai(targetDate)} แล้วเมี้ยว 🐾`
-    : 'เหมียว~ ถุงเงินมาทวงยอดค้างชำระแล้วเมี้ยว 🐾';
-
-  const flexMsg = {
-    type: 'flex',
-    altText,
-    contents: bubbles.length === 1 ? bubbles[0] : { type: 'carousel', contents: bubbles }
-  };
-
-  if (group.lineGroupId && process.env.LINE_CHANNEL_ACCESS_TOKEN) {
-    await linePush(group.lineGroupId, [flexMsg]);
-    console.log(`📢 Sent reminder → "${group.name}" (${bubbles.length} date(s))`);
-  } else {
-    console.log(`📢 [Simulated] Reminder for "${group.name}":`, JSON.stringify(flexMsg, null, 2));
-  }
-
-  return { sent: true, dateCount: bubbles.length };
-}
-
-// ----------------------------------------------------
-// LINE API Helpers
-// ----------------------------------------------------
-async function lineGet(path: string) {
-  const res = await fetch(`https://api.line.me${path}`, {
-    headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
-  });
-  if (!res.ok) {
-    console.error(`[LINE API] ${res.status} ${res.statusText} — GET ${path}`);
-    return null;
-  }
-  return res.json();
-}
-
-// Resolve a group by any public key: LINE group ID, invite code, or Mongo _id.
-// `populate` optionally populates the members field.
-async function resolveGroup(key: string, populate = false) {
-  let q = Group.findOne({ lineGroupId: key });
-  if (populate) q = q.populate('members');
-  let group = await q;
-  if (group) return group;
-
-  q = Group.findOne({ inviteCode: key });
-  if (populate) q = q.populate('members');
-  group = await q;
-  if (group) return group;
-
-  if (mongoose.Types.ObjectId.isValid(key)) {
-    let q2 = Group.findById(key);
-    if (populate) q2 = q2.populate('members');
-    group = await q2;
-    if (group) return group;
-  }
-  return null;
-}
-
-// Fetch every member of a LINE group and upsert them into MongoDB
-async function syncGroupMembers(lineGroupId: string) {
-  if (!process.env.LINE_CHANNEL_ACCESS_TOKEN) return;
-
-  try {
-    // 1. Get group name
-    let groupName = `Group (${lineGroupId.substring(0, 8)})`;
-    const summary = await lineGet(`/v2/bot/group/${lineGroupId}/summary`) as any;
-    if (summary?.groupName) groupName = summary.groupName;
-
-    // 2. Collect all member user IDs (paginated)
-    const userIds: string[] = [];
-    let nextToken: string | undefined;
-    do {
-      const url = `/v2/bot/group/${lineGroupId}/members/ids${nextToken ? `?start=${nextToken}` : ''}`;
-      const page = await lineGet(url) as any;
-      if (!page) break;
-      userIds.push(...(page.memberIds || []));
-      nextToken = page.next;
-    } while (nextToken);
-
-    // 3. Upsert each user profile
-    const memberIds: mongoose.Types.ObjectId[] = [];
-    for (const userId of userIds) {
-      const profile = await lineGet(`/v2/bot/group/${lineGroupId}/member/${userId}`) as any;
-      if (!profile) continue;
-      const user = await User.findOneAndUpdate(
-        { lineId: userId },
-        { displayName: profile.displayName, pictureUrl: profile.pictureUrl || '' },
-        { upsert: true, new: true }
-      );
-      memberIds.push(user._id as mongoose.Types.ObjectId);
-    }
-
-    // 4. Create or update the group record
-    let group = await Group.findOne({ lineGroupId });
-    if (!group) {
-      await Group.create({ lineGroupId, name: groupName, members: memberIds });
-    } else {
-      group.name = groupName;
-      const existing = new Set((group.members as any[]).map((m: any) => m.toString()));
-      for (const id of memberIds) {
-        if (!existing.has(id.toString())) (group.members as any[]).push(id);
-      }
-      await group.save();
-    }
-    console.log(`✅ Synced ${memberIds.length} members for group: ${groupName}`);
-  } catch (err) {
-    console.error('syncGroupMembers error:', err);
-  }
-}
 
 const app = new Elysia()
   // HTML + health/config routes (no-store index) — before staticPlugin so it wins
@@ -274,7 +67,7 @@ const app = new Elysia()
           let grp = await Group.findOne({ lineGroupId });
           if (!grp) {
             let gName = `Group (${lineGroupId.substring(0, 8)})`;
-            const summary = await lineGet(`/v2/bot/group/${lineGroupId}/summary`) as any;
+            const summary = await LineService.get(`/v2/bot/group/${lineGroupId}/summary`) as any;
             if (summary?.groupName) gName = summary.groupName;
             await Group.create({ lineGroupId, name: gName, members: [] });
             console.log(`✅ Created group record: ${gName}`);
@@ -288,7 +81,7 @@ const app = new Elysia()
           console.log(`➕ ${joined.length} member(s) joined group: ${lineGroupId}`);
           for (const member of joined) {
             if (member.type !== 'user') continue;
-            const profile = await lineGet(`/v2/bot/group/${lineGroupId}/member/${member.userId}`) as any;
+            const profile = await LineService.get(`/v2/bot/group/${lineGroupId}/member/${member.userId}`) as any;
             if (!profile) continue;
             const user = await User.findOneAndUpdate(
               { lineId: member.userId },
@@ -317,7 +110,7 @@ const app = new Elysia()
           // (bulk member-list API requires special LINE approval; individual profile always works)
           if (source.groupId && source.userId && process.env.LINE_CHANNEL_ACCESS_TOKEN) {
             try {
-              const profile = await lineGet(`/v2/bot/group/${source.groupId}/member/${source.userId}`) as any;
+              const profile = await LineService.get(`/v2/bot/group/${source.groupId}/member/${source.userId}`) as any;
               if (profile) {
                 const user = await User.findOneAndUpdate(
                   { lineId: source.userId },
@@ -328,7 +121,7 @@ const app = new Elysia()
                 if (!grp) {
                   // Fetch group name from LINE API
                   let gName = `Group (${source.groupId.substring(0, 8)})`;
-                  const summary = await lineGet(`/v2/bot/group/${source.groupId}/summary`) as any;
+                  const summary = await LineService.get(`/v2/bot/group/${source.groupId}/summary`) as any;
                   if (summary?.groupName) gName = summary.groupName;
                   await Group.create({ lineGroupId: source.groupId, name: gName, members: [user._id] });
                 } else {
@@ -460,9 +253,9 @@ const app = new Elysia()
   // Debug: check what LINE API returns for a group's member IDs
   .get('/api/debug/group/:groupId/members', async ({ params: { groupId } }) => {
     if (!process.env.LINE_CHANNEL_ACCESS_TOKEN) return { error: 'No LINE token configured' };
-    const count = await lineGet(`/v2/bot/group/${groupId}/members/count`);
-    const ids = await lineGet(`/v2/bot/group/${groupId}/members/ids`);
-    const summary = await lineGet(`/v2/bot/group/${groupId}/summary`);
+    const count = await LineService.get(`/v2/bot/group/${groupId}/members/count`);
+    const ids = await LineService.get(`/v2/bot/group/${groupId}/members/ids`);
+    const summary = await LineService.get(`/v2/bot/group/${groupId}/summary`);
     return { groupId, summary, memberCount: count, memberIds: ids };
   })
 
@@ -548,7 +341,7 @@ const app = new Elysia()
         return { error: 'lineId and displayName are required' };
       }
 
-      const group = await resolveGroup(groupId);
+      const group = await GroupService.resolve(groupId);
       if (!group) {
         set.status = 404;
         return { error: 'Group not found' };
@@ -595,7 +388,7 @@ const app = new Elysia()
 
       // Use resolveGroup so an existing group is found whether the caller
       // passes a lineGroupId, an inviteCode, or a Mongo _id.
-      let group = await resolveGroup(groupId);
+      let group = await GroupService.resolve(groupId);
       if (!group) {
         // No matching group — create one keyed by this LINE group ID
         let groupName = `Group (${groupId.substring(0, 8)})`;
@@ -643,7 +436,7 @@ const app = new Elysia()
   .get('/api/groups/:groupId', async ({ params: { groupId }, set }) => {
     try {
       // Resolve by LINE group ID, invite code, or Mongo _id
-      const group = await resolveGroup(groupId, true);
+      const group = await GroupService.resolve(groupId, true);
 
       if (!group) {
         set.status = 404;
@@ -715,7 +508,7 @@ const app = new Elysia()
   // Get Bills grouped by Day for a Group
   .get('/api/groups/:groupId/bills', async ({ params: { groupId }, set }) => {
     try {
-      const group = await resolveGroup(groupId);
+      const group = await GroupService.resolve(groupId);
 
       if (!group) {
         set.status = 404;
@@ -829,7 +622,7 @@ const app = new Elysia()
       } = b;
 
       // Find group (accepts LINE group ID, invite code, or _id)
-      const group = await resolveGroup(b.groupKey || b.lineGroupId);
+      const group = await GroupService.resolve(b.groupKey || b.lineGroupId);
       if (!group) {
         set.status = 404;
         return { error: 'Group not found' };
@@ -1030,7 +823,7 @@ const app = new Elysia()
         if (billFullyPaid) {
           msgText += `\n🏆 บิล "${bill.name}" จ่ายครบแล้วเมี้ยว! 🐾`;
         }
-        await linePush(group.lineGroupId, [{ type: 'text', text: msgText }]);
+        await LineService.push(group.lineGroupId, [{ type: 'text', text: msgText }]);
       }
 
       return { success: true, billStatus: bill.status };
@@ -1178,7 +971,7 @@ const app = new Elysia()
   .post('/api/groups/:groupId/bills/cancel-day', async ({ params: { groupId }, body, set }) => {
     try {
       const { date } = body as { date: string };
-      const group = await resolveGroup(groupId);
+      const group = await GroupService.resolve(groupId);
       if (!group) { set.status = 404; return { error: 'Group not found' }; }
 
       const bills = await Bill.find({ groupId: group._id, date, status: 'unpaid' });
@@ -1203,7 +996,7 @@ const app = new Elysia()
       const { lineId } = body as any;
       if (!lineId) { set.status = 400; return { error: 'lineId is required' }; }
 
-      const group = await resolveGroup(groupId);
+      const group = await GroupService.resolve(groupId);
       if (!group) { set.status = 404; return { error: 'Group not found' }; }
 
       const user = await User.findOne({ lineId });
@@ -1230,7 +1023,7 @@ const app = new Elysia()
       const { lineId } = body as any;
       if (!lineId) { set.status = 400; return { error: 'lineId is required' }; }
 
-      const group = await resolveGroup(groupId);
+      const group = await GroupService.resolve(groupId);
       if (!group) { set.status = 404; return { error: 'Group not found' }; }
 
       const user = await User.findOne({ lineId });
@@ -1264,11 +1057,11 @@ const app = new Elysia()
       const { date } = body as any;
       if (!date) { set.status = 400; return { error: 'date is required (YYYY-MM-DD)' }; }
 
-      const group = await resolveGroup(groupId);
+      const group = await GroupService.resolve(groupId);
       if (!group) { set.status = 404; return { error: 'Group not found' }; }
 
       const liffId = process.env.LINE_LIFF_ID || 'mock-liff-id';
-      const result = await sendGroupReminders(group, liffId, date);
+      const result = await LineService.sendGroupReminders(group, liffId, date);
       return { success: true, ...result };
     } catch (err) {
       console.error(err);
@@ -1282,7 +1075,7 @@ const app = new Elysia()
     try {
       const { messageText } = body as any;
 
-      const group = await resolveGroup(groupId, true);
+      const group = await GroupService.resolve(groupId, true);
       if (!group) {
         set.status = 404;
         return { error: 'Group not found' };
