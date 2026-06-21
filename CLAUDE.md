@@ -119,6 +119,24 @@ Commit the version bump together with the change.
 - Bump `package.json` `version` (major.minor.bugfix) and add a `CHANGELOG.md` entry in the same PR.
 - Make sure `bun test` and the build checks pass locally before opening the PR (CI runs them too).
 
+## Ripple check — never leave related files stale
+Before committing/opening a PR, trace the **full impact** of the change and update everything it
+touches so nothing is left behind. Walk this checklist every time and update what applies:
+- **Tests** (`test/*`) — add/adjust tests for changed logic; keep `bun test` green.
+- **CI/CD** (`.github/workflows/*`) — if files moved, scripts/commands changed, new build steps or
+  env are needed, or check commands no longer match.
+- **README.md** — features, design notes, file structure, commands, or screenshots that changed.
+- **CLAUDE.md (this file)** — if conventions, gotchas, architecture, file paths, or workflow
+  changed, update the rules here too (the rule file is not exempt).
+- **CHANGELOG.md + `package.json` version** — every change.
+- **`.env.example`** — when adding/removing/renaming an env var (and note it in the secrets list).
+- **Cache-bust versions** — bump `?v=` on `styles.css`/`app.js` in `index.html` (and on
+  `public/lib/*` import specifiers) when those files change.
+- **Cross-references** — grep for other places that name the thing you changed (routes, env var
+  names, file paths, copy strings) so no caller/doc is left pointing at the old version.
+Rule of thumb: after editing a file, ask "what else references or depends on this?" and fix those
+in the same PR.
+
 ## Testing
 - Test runner: **`bun test`** (`bun:test`). Tests live in `test/*.test.ts`.
 - **Pure, testable logic is extracted into modules** so it can be imported by both the app and the
