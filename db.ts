@@ -41,15 +41,8 @@ export interface IGroup extends Document {
   createdAt: Date;
 }
 
-// Generate a short, unambiguous invite code (no 0/O/1/I/l)
-export function generateInviteCode(length = 8): string {
-  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  let code = '';
-  for (let i = 0; i < length; i++) {
-    code += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
-  return code;
-}
+// Re-export the pure invite-code generator (lives in ./lib/invite, shared with tests).
+export { generateInviteCode } from './lib/invite';
 
 export interface IBill extends Document {
   groupId: mongoose.Types.ObjectId;

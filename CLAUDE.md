@@ -113,10 +113,46 @@ Commit the version bump together with the change.
 - MongoDB **database name** (`/khun-ngern`) and the **R2 bucket** (`khun-ngern`) — internal, never
   user-visible; renaming would force a risky data migration for zero benefit. Leave them.
 
+## Contribution workflow — ALWAYS use a PR (do NOT push to `main`)
+- **Never commit directly to `main`.** For every change: create a branch, commit, push, and open a
+  **pull request** (`gh pr create`). Merging the PR triggers the production deploy.
+- Bump `package.json` `version` (major.minor.bugfix) and add a `CHANGELOG.md` entry in the same PR.
+- Make sure `bun test` and the build checks pass locally before opening the PR (CI runs them too).
+
+## Ripple check — never leave related files stale
+Before committing/opening a PR, trace the **full impact** of the change and update everything it
+touches so nothing is left behind. Walk this checklist every time and update what applies:
+- **Tests** (`test/*`) — add/adjust tests for changed logic; keep `bun test` green.
+- **CI/CD** (`.github/workflows/*`) — if files moved, scripts/commands changed, new build steps or
+  env are needed, or check commands no longer match.
+- **README.md** — features, design notes, file structure, commands, or screenshots that changed.
+- **CLAUDE.md (this file)** — if conventions, gotchas, architecture, file paths, or workflow
+  changed, update the rules here too (the rule file is not exempt).
+- **CHANGELOG.md + `package.json` version** — every change.
+- **`.env.example`** — when adding/removing/renaming an env var (and note it in the secrets list).
+- **Cache-bust versions** — bump `?v=` on `styles.css`/`app.js` in `index.html` (and on
+  `public/lib/*` import specifiers) when those files change.
+- **Cross-references** — grep for other places that name the thing you changed (routes, env var
+  names, file paths, copy strings) so no caller/doc is left pointing at the old version.
+Rule of thumb: after editing a file, ask "what else references or depends on this?" and fix those
+in the same PR.
+
+## Testing
+- Test runner: **`bun test`** (`bun:test`). Tests live in `test/*.test.ts`.
+- **Pure, testable logic is extracted into modules** so it can be imported by both the app and the
+  tests — server logic in `lib/*.ts` (`crypto`, `settle`, `invite`), client logic in
+  `public/lib/*.js` (`promptpay`). `server.ts`/`db.ts`/`app.js` import from these; keep new pure
+  logic there rather than inline in route handlers or DOM code.
+- **Write/extend tests for any new pure logic** (calculations, formatting, crypto, parsing). DB-/
+  DOM-/network-bound code isn't unit-tested yet — factor the pure part out and test that.
+- Don't import `server.ts`/`db.ts` from tests (they have import-time side effects: `db.ts` calls
+  `process.exit(1)` without `MONGODB_URI`; `server.ts` connects + listens). Import from `lib/` instead.
+- **Client `lib/` imports use a `?v=N` cache-bust query** (e.g. `./lib/promptpay.js?v=1`) — bump it
+  when you change a `public/lib/*.js` file (LINE WebView caching). The bundler can't resolve a
+  queried specifier, so the CI client check runs `bun build … --external '*'`.
+
 ## CI/CD
-- **PR** (`.github/workflows/ci.yml`): installs deps + compile-checks `server.ts` and `app.js`.
-  Keep this green before merging.
+- **PR** (`.github/workflows/ci.yml`): `bun install` → `bun test` → compile-check `server.ts` →
+  bundle-check `public/lib/*` → parse-check `app.js`. Keep it green before merging.
 - **main** (`.github/workflows/deploy.yml`): deploys to Fly on push/merge. Needs the
   `FLY_API_TOKEN` repo secret.
-- There is **no automated test suite** yet — the compile checks are the gate. Add tests under a
-  `test/` dir and wire them into `ci.yml` when introducing testable logic.

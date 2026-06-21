@@ -1,6 +1,6 @@
 {
   "name": "thung-ngoen",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "server.ts",
   "dependencies": {
     "@elysiajs/static": "^1.2.0",
@@ -10,6 +10,7 @@
   "description": "LIFF app and LINE chatbot for splitting bills",
   "scripts": {
     "dev": "bun --watch server.ts",
-    "start": "NODE_ENV=production bun server.ts"
+    "start": "NODE_ENV=production bun server.ts",
+    "test": "bun test"
   }
 }

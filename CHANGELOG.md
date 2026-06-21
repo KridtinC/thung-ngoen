@@ -2,6 +2,16 @@
 
 Versioning: **major.minor.bugfix** (major = redesign/rebrand, minor = new feature, bugfix = fix).
 
+## 1.1.0 — Test suite + PR workflow
+- Added a **`bun test`** suite covering pure logic on both sides: client PromptPay/CRC16
+  (`public/lib/promptpay.js`) and server crypto, debt-settlement, and invite-code
+  (`lib/crypto.ts`, `lib/settle.ts`, `lib/invite.ts`).
+- Refactored those pure functions out of `server.ts`/`db.ts`/`app.js` into importable modules
+  (no behaviour change) so they're testable.
+- CI now runs `bun test` + compile/bundle/parse checks on every PR.
+- Adopted a **PR-based workflow**: changes land via pull request (CI gate) and deploy on merge to
+  `main`; no direct pushes to `main`.
+
 ## 1.0.0 — Initial public release
 First versioned/open-sourced cut. Summary of everything built so far:
 
