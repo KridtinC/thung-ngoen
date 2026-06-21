@@ -1,35 +1,15 @@
-import { Elysia, t, redirect } from 'elysia';
+import { Elysia, t } from 'elysia';
 import { staticPlugin } from '@elysiajs/static';
 import { readFileSync } from 'node:fs';
 import mongoose from 'mongoose';
-import { randomBytes } from 'node:crypto';
 import { connectDB, User, Group, Bill, BillItem, BillPayee, IUser, IBillPayee, IBill, generateInviteCode } from './db';
 import { encryptPII, decryptPII } from './lib/crypto';
 import { simplifyDebts } from './lib/settle';
 import { computeEqualSplit, computeManualSplit } from './lib/bill';
+import { slips } from './src/server/modules/slips';
 
 // PII encryption helpers (AES-256-GCM) live in ./lib/crypto (shared with tests).
-
-// ----------------------------------------------------
-// R2 Object Storage (Cloudflare) — for payment slip uploads
-// Uses Bun's built-in S3-compatible client. Disabled if env vars are missing.
-// ----------------------------------------------------
-const r2Enabled = !!(
-  process.env.R2_ACCOUNT_ID &&
-  process.env.R2_ACCESS_KEY_ID &&
-  process.env.R2_SECRET_ACCESS_KEY &&
-  process.env.R2_BUCKET
-);
-const r2 = r2Enabled
-  ? new Bun.S3Client({
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-      bucket: process.env.R2_BUCKET!,
-      endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      region: 'auto',
-    })
-  : null;
-console.log(r2Enabled ? '🪣 R2 slip storage enabled' : '⚠️ R2 slip storage NOT configured');
+// Slip storage (Cloudflare R2) lives in ./src/server/modules/slips.
 
 // Connect to Database
 await connectDB();
@@ -283,6 +263,9 @@ const app = new Elysia()
     assets: 'public',
     prefix: '',
   }))
+
+  // Feature modules (Elysia best practice: 1 instance = 1 controller)
+  .use(slips)
 
   // ----------------------------------------------------
   // LINE Webhook Endpoint
@@ -1015,45 +998,6 @@ const app = new Elysia()
   })
 
   // Mark payee portion as Paid
-  // Upload a payment slip image to R2. Returns the stored object key.
-  .post('/api/slips', async ({ body, set }) => {
-    if (!r2) { set.status = 503; return { error: 'Slip storage is not configured.' }; }
-    try {
-      const file = (body as any).slip as File | undefined;
-      if (!file || typeof file.arrayBuffer !== 'function') {
-        set.status = 400;
-        return { error: 'No slip file provided.' };
-      }
-      if (file.size > 8 * 1024 * 1024) {
-        set.status = 413;
-        return { error: 'Slip image too large (max 8MB).' };
-      }
-      const type = file.type || 'image/jpeg';
-      if (!type.startsWith('image/')) {
-        set.status = 400;
-        return { error: 'Slip must be an image.' };
-      }
-      const ext = (file.name?.split('.').pop() || type.split('/')[1] || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const key = `slips/${Date.now()}-${randomBytes(6).toString('hex')}.${ext}`;
-      await r2.write(key, await file.arrayBuffer(), { type });
-      return { key };
-    } catch (err) {
-      console.error('Slip upload error:', err);
-      set.status = 500;
-      return { error: 'Failed to upload slip.' };
-    }
-  })
-
-  // Stream a slip by redirecting to a short-lived presigned R2 URL.
-  // Used as an <img src>; bucket stays private.
-  .get('/api/slip', ({ query, set }) => {
-    if (!r2) { set.status = 503; return 'Slip storage is not configured.'; }
-    const key = (query as any).key as string;
-    if (!key || !key.startsWith('slips/')) { set.status = 400; return 'Invalid key.'; }
-    const url = r2.presign(key, { expiresIn: 3600, method: 'GET' });
-    return redirect(url);
-  })
-
   .post('/api/bills/:id/pay', async ({ params: { id }, body, set }) => {
     try {
       const { payeeLineId, slipKey } = body as any;
