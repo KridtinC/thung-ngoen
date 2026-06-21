@@ -1,0 +1,26 @@
+name: CI
+
+# Verify the app compiles on every pull request to main.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Compile-check server
+        run: bun build server.ts --target bun --outfile /tmp/server.build.js
+
+      - name: Parse-check client
+        run: bun build public/app.js --target browser --outfile /tmp/app.build.js

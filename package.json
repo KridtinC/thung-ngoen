@@ -1,0 +1,15 @@
+{
+  "name": "thung-ngoen",
+  "version": "1.0.0",
+  "main": "server.ts",
+  "dependencies": {
+    "@elysiajs/static": "^1.2.0",
+    "elysia": "^1.2.14",
+    "mongoose": "^8.10.1"
+  },
+  "description": "LIFF app and LINE chatbot for splitting bills",
+  "scripts": {
+    "dev": "bun --watch server.ts",
+    "start": "NODE_ENV=production bun server.ts"
+  }
+}
