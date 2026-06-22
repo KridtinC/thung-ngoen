@@ -12,10 +12,14 @@ bot bill-splitting app. Read this before making changes.
   khun-ngern").
 
 ## Stack & infra
-- **Runtime/framework:** Bun + Elysia (TypeScript), single `server.ts`.
+- **Runtime/framework:** Bun + Elysia (TypeScript). `server.ts` is a thin composition root that
+  `.use()`s feature modules in **`src/server/modules/{static,slips,users,bills,groups,line}`** —
+  each a named Elysia plugin (`index.ts`) + `service.ts` (DB/LINE/R2 logic) + `model.ts` (`t`
+  validation) where relevant. Pure logic lives in **`lib/*.ts`** (crypto, settle, invite, bill,
+  money, promptpay), shared by server, client, and tests.
 - **DB:** MongoDB Atlas via Mongoose (`db.ts`). Database name is `/khun-ngern`.
-- **Frontend:** plain HTML/CSS/JS in `public/` (`index.html`, `app.js`, `styles.css`). No build
-  step, no framework. Served statically by Elysia.
+- **Frontend:** TypeScript in **`src/client/`**, bundled by `bun build` to **`public/app.js`**
+  (a generated, gitignored artifact). HTML/CSS are hand-written in `public/`. Served statically by Elysia.
 - **Hosting:** Fly.io app **`thung-ngoen`** (region `sin`, 1× shared-cpu-1x/512MB, always-on).
   URL `https://thung-ngoen.fly.dev`.
 - **Object storage:** Cloudflare R2 (S3-compatible) for payment slips, via **Bun's built-in
@@ -23,10 +27,12 @@ bot bill-splitting app. Read this before making changes.
 - **Messaging:** LINE Messaging API (push + Flex messages) and LIFF SDK v2.
 
 ## Core commands
-- Local dev: `bun run dev` → http://localhost:3000 (needs `.env`; full LINE/LIFF flow only works
-  inside LINE because the app gates on `liff.init()`).
-- Type/compile check: `bun build server.ts --target bun` and `bun build public/app.js --target browser`.
+- Local dev: `bun run dev` → builds `src/client` → `public/app.js` (watch) + runs the server at
+  http://localhost:3000 (needs `.env`; full LINE/LIFF flow only works inside LINE — gated on `liff.init()`).
+- Build client bundle: `bun run build:client`. Type-check: `bun run typecheck` (`tsc --noEmit`).
+  Compile-check server: `bun build server.ts --target bun`. Tests: `bun test`.
 - Deploy: `flyctl deploy --remote-only -a thung-ngoen` (or push to `main` → GitHub Actions deploys).
+  The Docker image runs `bun run build:client`, so `public/app.js` is built in-image (it's gitignored).
 
 ## Versioning rule (package.json `version`, format major.minor.bugfix)
 Bump on every change:
@@ -130,8 +136,8 @@ touches so nothing is left behind. Walk this checklist every time and update wha
   changed, update the rules here too (the rule file is not exempt).
 - **CHANGELOG.md + `package.json` version** — every change.
 - **`.env.example`** — when adding/removing/renaming an env var (and note it in the secrets list).
-- **Cache-bust versions** — bump `?v=` on `styles.css`/`app.js` in `index.html` (and on
-  `public/lib/*` import specifiers) when those files change.
+- **Cache-bust versions** — bump `?v=` on `styles.css`/`app.js` in `index.html` when those change
+  (the client is a single bundle, so only these two query strings matter).
 - **Cross-references** — grep for other places that name the thing you changed (routes, env var
   names, file paths, copy strings) so no caller/doc is left pointing at the old version.
 Rule of thumb: after editing a file, ask "what else references or depends on this?" and fix those
@@ -139,17 +145,22 @@ in the same PR.
 
 ## Testing
 - Test runner: **`bun test`** (`bun:test`). Tests live in `test/*.test.ts`.
-- **Pure, testable logic is extracted into modules** so it can be imported by both the app and the
-  tests — server logic in `lib/*.ts` (`crypto`, `settle`, `invite`), client logic in
-  `public/lib/*.js` (`promptpay`). `server.ts`/`db.ts`/`app.js` import from these; keep new pure
-  logic there rather than inline in route handlers or DOM code.
-- **Write/extend tests for any new pure logic** (calculations, formatting, crypto, parsing). DB-/
-  DOM-/network-bound code isn't unit-tested yet — factor the pure part out and test that.
-- Don't import `server.ts`/`db.ts` from tests (they have import-time side effects: `db.ts` calls
+- **Pure, testable logic lives in `lib/*.ts`** (`crypto`, `settle`, `invite`, `bill`, `money`,
+  `promptpay`) — imported by the server modules, the client (`src/client`), and the tests. Keep new
+  pure logic there rather than inline in route handlers or DOM code, and add/extend tests for it
+  (calculations, formatting, crypto, parsing). DB-/DOM-/network-bound code isn't unit-tested —
+  factor the pure part out and test that.
+- Don't import `server.ts`/`db.ts` from tests (import-time side effects: `db.ts` calls
   `process.exit(1)` without `MONGODB_URI`; `server.ts` connects + listens). Import from `lib/` instead.
-- **Client `lib/` imports use a `?v=N` cache-bust query** (e.g. `./lib/promptpay.js?v=1`) — bump it
-  when you change a `public/lib/*.js` file (LINE WebView caching). The bundler can't resolve a
-  queried specifier, so the CI client check runs `bun build … --external '*'`.
+- **`bun run typecheck` (`tsc --noEmit`) is a CI gate** for the server modules + `lib/` + tests.
+  The lifted client (`src/client/index.ts`) is marked `// @ts-nocheck` for now (granular DOM typing
+  is a follow-up); it's still bundled by `bun build` and imports the typed `lib/*`.
+
+## Caching (LINE WebView is aggressive)
+- `index.html` is served `Cache-Control: no-store` via an explicit route. Bust `styles.css` and
+  the single `app.js` bundle with `?v=N` in `index.html` — **bump on every deploy that changes them**.
+- The client is **one bundle** now (`bun build src/client → public/app.js`), so there are no
+  per-module `?v=` specifiers to maintain.
 
 ## CI/CD
 - **PR** (`.github/workflows/ci.yml`): `bun install` → `bun test` → compile-check `server.ts` →

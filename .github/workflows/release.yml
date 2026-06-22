@@ -1,0 +1,49 @@
+name: Release
+
+# After code lands on main, tag + publish a GitHub Release for the current
+# package.json version (using its CHANGELOG section as the notes), if not already released.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from package.json
+        id: v
+        run: echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether this version is already tagged
+        id: check
+        run: |
+          if git rev-parse "v${{ steps.v.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract release notes from CHANGELOG
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          awk -v v="${{ steps.v.outputs.version }}" \
+            'BEGIN{f=0} $0 ~ "^## "v {f=1;print;next} /^## /{if(f)exit} f' \
+            CHANGELOG.md > /tmp/notes.md
+          test -s /tmp/notes.md || echo "Release v${{ steps.v.outputs.version }}" > /tmp/notes.md
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.v.outputs.version }}" \
+            --target "${{ github.sha }}" \
+            --title "v${{ steps.v.outputs.version }}" \
+            --notes-file /tmp/notes.md

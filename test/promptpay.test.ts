@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test';
-import { crc16, generatePromptPayQR } from '../public/lib/promptpay.js';
+import { crc16, generatePromptPayQR } from '../lib/promptpay';
 
 describe('crc16 (CCITT-FALSE)', () => {
   test('matches the standard check vector for "123456789"', () => {

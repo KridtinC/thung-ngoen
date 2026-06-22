@@ -7,6 +7,11 @@ node_modules/
 !.env.example
 *.local
 
+# Build output — generated from src/client by `bun run build:client`
+public/app.js
+public/app.js.map
+*.map
+
 # Local tooling / OS
 .claude/
 .DS_Store
