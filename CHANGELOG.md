@@ -2,6 +2,23 @@
 
 Versioning: **major.minor.bugfix** (major = redesign/rebrand, minor = new feature, bugfix = fix).
 
+## 1.2.0 — Modular architecture + TypeScript client
+Internal refactor (no user-facing change) following the Elysia best-practice guide.
+- **Server**: split the 1,450-line `server.ts` into feature modules under
+  `src/server/modules/{static,slips,users,bills,groups,line}` — each a named Elysia plugin
+  (`index.ts`) with a `service.ts` (DB/LINE/R2 logic) and, where relevant, a `model.ts`.
+  `server.ts` is now a ~55-line composition root (connectDB + cron + `.use(...)` + listen).
+- **`t` validation models** on the bills (create/pay/cancel-day) and groups (create) endpoints,
+  registered via `.model()` (permissive — existing client payloads pass unchanged).
+- **Client → TypeScript**: `public/app.js` → `src/client/index.ts`, bundled to `public/app.js`
+  via `bun build` (a new build step). The served `app.js` is now a generated, gitignored artifact;
+  the Dockerfile builds it.
+- **Shared typed libs** (`lib/*.ts`) used by server, client, and tests: added `bill`, `money`
+  (+ tests), moved `promptpay` from `public/lib`. Tests: 24 → 36.
+- **Tooling**: `tsconfig.json` + `bun run typecheck` (now a CI gate for server/lib/tests);
+  CI builds the client bundle. `tsc` caught and fixed a latent `generateInviteCode` re-export bug.
+- Auto-release workflow (`release.yml`) + backfilled v1.0.0 / v1.1.0 releases.
+
 ## 1.1.0 — Test suite + PR workflow
 - Added a **`bun test`** suite covering pure logic on both sides: client PromptPay/CRC16
   (`public/lib/promptpay.js`) and server crypto, debt-settlement, and invite-code
