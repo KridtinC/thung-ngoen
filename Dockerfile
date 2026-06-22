@@ -13,6 +13,9 @@ FROM base AS release
 COPY --from=install /temp/prod/node_modules node_modules
 COPY . .
 
+# Build the client bundle (public/app.js is generated, not committed)
+RUN bun run build:client
+
 # Run as non-root user for security
 USER bun
 EXPOSE 3000/tcp

@@ -41,8 +41,10 @@ export interface IGroup extends Document {
   createdAt: Date;
 }
 
-// Re-export the pure invite-code generator (lives in ./lib/invite, shared with tests).
-export { generateInviteCode } from './lib/invite';
+// Pure invite-code generator lives in ./lib/invite (shared with tests).
+// Import locally (used by the schema default below) AND re-export for callers.
+import { generateInviteCode } from './lib/invite';
+export { generateInviteCode };
 
 export interface IBill extends Document {
   groupId: mongoose.Types.ObjectId;

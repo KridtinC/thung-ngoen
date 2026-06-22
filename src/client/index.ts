@@ -1,4 +1,8 @@
-import { generatePromptPayQR } from './lib/promptpay.js?v=1';
+// @ts-nocheck — lifted verbatim from the original app.js during the TS migration.
+// Bundled by `bun build` and importing typed lib/* modules; granular DOM typing
+// (HTMLInputElement/Dialog/Canvas casts) is a tracked follow-up.
+import { generatePromptPayQR } from '../../lib/promptpay';
+import { fmt } from '../../lib/money';
 
 // Detect LINE in-app browser
 const isInLineApp = /Line/i.test(navigator.userAgent);
@@ -9,8 +13,6 @@ let currentGroupId = 'g-test';
 let groupMembers = [];
 let activeBillTab = 'equal'; // 'equal' or 'manual'
 let manualItems = [];
-
-const fmt = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // ----------------------------------------------------
 // Light / Dark theme toggle (default theme is set in <head> before paint)

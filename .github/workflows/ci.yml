@@ -22,11 +22,11 @@ jobs:
       - name: Run tests
         run: bun test
 
+      - name: Type-check (server + lib + tests)
+        run: bun run typecheck
+
       - name: Compile-check server
         run: bun build server.ts --target bun --outfile /tmp/server.build.js
 
-      - name: Bundle-check shared client libs
-        run: bun build public/lib/promptpay.js --target browser --outfile /tmp/lib.build.js
-
-      - name: Parse-check client (imports left external — versioned ?v= specifiers)
-        run: bun build public/app.js --target browser --external '*' --outfile /tmp/app.build.js
+      - name: Build client bundle (also type-resolves shared lib/* imports)
+        run: bun build src/client/index.ts --target browser --outfile /tmp/app.build.js
