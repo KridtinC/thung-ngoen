@@ -3,8 +3,10 @@ import { Bill, BillItem, BillPayee, User, Group, IUser, generateInviteCode } fro
 import { decryptPII } from '../../../../lib/crypto';
 import { simplifyDebts } from '../../../../lib/settle';
 import { GroupService } from './service';
+import { groupModels } from './model';
 
 export const groups = new Elysia({ name: 'groups' })
+  .use(groupModels)
   .get('/api/users/:lineId/groups', async ({ params: { lineId }, set }) => {
     try {
       const user = await User.findOne({ lineId });
@@ -71,7 +73,7 @@ export const groups = new Elysia({ name: 'groups' })
       set.status = 500;
       return { error: 'Internal Server Error' };
     }
-  })
+  }, { body: 'groups.create' })
 
   // Join a group via its invite code (or any group key)
   .post('/api/groups/:groupId/join', async ({ params: { groupId }, body, set }) => {

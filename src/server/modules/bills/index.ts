@@ -5,8 +5,10 @@ import { decryptPII } from '../../../../lib/crypto';
 import { computeEqualSplit, computeManualSplit } from '../../../../lib/bill';
 import { GroupService } from '../groups/service';
 import { LineService } from '../line/service';
+import { billModels } from './model';
 
 export const bills = new Elysia({ name: 'bills' })
+  .use(billModels)
   .get('/api/groups/:groupId/bills', async ({ params: { groupId }, set }) => {
     try {
       const group = await GroupService.resolve(groupId);
@@ -275,7 +277,7 @@ export const bills = new Elysia({ name: 'bills' })
       set.status = 500;
       return { error: 'Internal Server Error' };
     }
-  })
+  }, { body: 'bills.create' })
 
   // Mark payee portion as Paid
   .post('/api/bills/:id/pay', async ({ params: { id }, body, set }) => {
@@ -333,7 +335,7 @@ export const bills = new Elysia({ name: 'bills' })
       set.status = 500;
       return { error: 'Internal Server Error' };
     }
-  })
+  }, { body: 'bills.pay' })
 
   // Cancel a Bill
   .post('/api/bills/:id/cancel', async ({ params: { id }, set }) => {
@@ -466,7 +468,7 @@ export const bills = new Elysia({ name: 'bills' })
       set.status = 500;
       return { error: 'Internal Server Error' };
     }
-  })
+  }, { body: 'bills.create' })
 
   // Cancel all unpaid bills for a group on a given date
   .post('/api/groups/:groupId/bills/cancel-day', async ({ params: { groupId }, body, set }) => {
@@ -488,5 +490,5 @@ export const bills = new Elysia({ name: 'bills' })
       set.status = 500;
       return { error: 'Internal Server Error' };
     }
-  })
+  }, { body: 'bills.cancelDay' })
 ;
