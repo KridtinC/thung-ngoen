@@ -5,7 +5,7 @@ import { generatePromptPayQR } from '../../lib/promptpay';
 import { fmt } from '../../lib/money';
 import { canInvite, canLeave, canDelete } from '../../lib/group-rules';
 import {
-  portionKey, defaultSelectedKeys, selectedTotal, selectionsFor, payingForNames
+  portionKey, defaultSelectedKeys, selectedTotal, selectionsFor
 } from '../../lib/settle-select';
 import { canConfirmPayment } from '../../lib/pay-rules';
 import { t, detectLang } from '../../lib/i18n';
@@ -184,7 +184,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeSelectedKeys = [];
   let lastDailyGroups = [];
   const settlePortionsEl = document.getElementById('settle-portions');
-  const payForLine = document.getElementById('pay-for-line');
 
   // All of a payer's still-unpaid (bill × payee) portions, across every loaded day.
   const getUnpaidPortionsForPayer = (payerLineId) => {
@@ -376,20 +375,9 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="group-list-right">
             <div class="group-list-avatars">${avatars}</div>
-            <button class="btn-card-copy" title="Copy invite link" type="button">📋</button>
           </div>`;
 
-        // Open group on card click (but not the copy button)
-        card.addEventListener('click', (e) => {
-          if (!e.target.closest('.btn-card-copy')) openGroup(g.key);
-        });
-
-        // Copy invite link button
-        const copyBtn = card.querySelector('.btn-card-copy');
-        copyBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          copyToClipboard(buildInviteLink(g.inviteCode), copyBtn, '✅', '📋');
-        });
+        card.addEventListener('click', () => openGroup(g.key));
 
         myGroupsList.appendChild(card);
       });
@@ -795,7 +783,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ? `<button class="btn btn-small btn-danger-outline btn-cancel-day" data-date="${dayInfo.date}">${TT('bill.cancelAll')}</button>`
       : '';
     const slipsBtnHTML = slipCount > 0
-      ? `<button class="btn btn-small btn-view-day-slips">${TT('slips.day', { n: slipCount })}</button>`
+      ? `<button class="btn btn-secondary btn-small btn-view-day-slips">${TT('slips.day', { n: slipCount })}</button>`
       : '';
 
     dayCard.innerHTML = `
@@ -1648,11 +1636,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!payer) return;
     const total = selectedTotal(activePortions, activeSelectedKeys);
     payAmountDisplay.textContent = `${fmt(total)} THB`;
-    const others = payingForNames(activePortions, activeSelectedKeys, currentUser.userId);
-    if (payForLine) {
-      if (others.length) { payForLine.textContent = TT('pay.payingFor', { names: others.join(', ') }); payForLine.hidden = false; }
-      else payForLine.hidden = true;
-    }
     if (payer.promptPay && total > 0) {
       const qrPayload = generatePromptPayQR(payer.promptPay, total);
       if (qrPayload) drawQRCode(qrPayload, 'qr-canvas');

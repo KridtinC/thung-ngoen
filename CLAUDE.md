@@ -57,6 +57,11 @@ Commit the version bump together with the change.
   `?v=N` query strings — **bump them on every deploy that changes app.js/styles.css.**
 
 ### CSS / theming
+- **New UI must match the existing visual language.** Before styling a new element, find the closest existing component and reuse its classes / CSS variables. Specifically:
+  - Buttons: use `.btn` + a variant (`.btn-primary`, `.btn-secondary`, `.btn-danger`, `.btn-danger-outline`, `.btn-small`) — never roll a custom button without a good reason.
+  - Checkboxes: always set `accent-color: var(--color-primary)` so they match the teal theme.
+  - Colors: use only the CSS variables (`--color-primary`, `--color-gold`, `--color-text-main`, `--color-text-muted`, `--ov-faint/soft/med`, `--divider`, etc.) — never hard-code hex or `rgba` values.
+  - Invalid variables (`--text-secondary`, `--bg-secondary`, etc.) silently fall back to browser defaults and cause off-theme rendering — always verify the variable name exists in `:root`.
 - **The `hidden` attribute is defeated by any explicit `display` rule.** `[hidden]` only sets
   `display:none` at UA priority, so a rule like `#overlay{display:flex}` keeps it visible forever.
   Always pair such rules with `#overlay[hidden]{display:none}`, or scope display to `[open]` /
