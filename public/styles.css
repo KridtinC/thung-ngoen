@@ -220,14 +220,14 @@ body {
 }
 
 .chat-system-msg {
-  align-self: center;
+  align-self: stretch;
   background: var(--ov-soft);
   color: var(--color-text-muted);
   font-size: 11px;
-  padding: 4px 12px;
+  padding: 8px 12px;
   border-radius: 12px;
   text-align: center;
-  max-width: 90%;
+  max-width: none;
 }
 
 /* Chat Bubble styles */
@@ -503,7 +503,7 @@ body {
   transition: background 0.15s;
 }
 .theme-toggle:hover { background: var(--ov-med); }
-.lang-toggle { font-size: 12px; font-weight: 700; letter-spacing: 0.3px; }
+.lang-toggle { font-size: 12px; font-weight: 700; letter-spacing: 0.3px; margin-left: auto; }
 
 .header-group-row {
   display: flex;
@@ -630,8 +630,9 @@ body {
   padding: 6px 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
-  margin-left: auto;
+  cursor: pointer;          /* whole badge opens settings */
 }
+.user-profile-badge:hover { background: var(--ov-soft); }
 
 .profile-pic-wrap {
   position: relative;
