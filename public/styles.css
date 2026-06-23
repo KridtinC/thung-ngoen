@@ -1793,6 +1793,52 @@ dialog[open] {
 .settle-portion-name { flex: 1; color: var(--color-text-main); }
 .settle-portion-amt { font-weight: 600; color: var(--color-text-main); }
 
+/* Locked own-portion row (always selected, no checkbox) */
+.settle-portion-locked {
+  cursor: default;
+}
+.settle-portion-locked + .settle-portion-locked {
+  border-top: 1px solid var(--divider);
+}
+.settle-portion-lock {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--color-paid);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* "Pay for others" collapse toggle */
+.settle-pay-others-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 2px;
+  margin-top: 4px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--divider);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+.settle-pay-others-toggle:hover {
+  color: var(--color-primary);
+}
+.toggle-caret {
+  font-size: 10px;
+}
+/* First other row needs top border only if coming after the toggle (not settle-portion-row) */
+.settle-pay-others-list .settle-portion-row:first-child {
+  border-top: none;
+}
+
 .pay-amount-badge {
   background: rgba(18, 156, 180, 0.1);
   color: var(--color-primary);
