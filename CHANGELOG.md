@@ -2,6 +2,15 @@
 
 Versioning: **major.minor.bugfix** (major = redesign/rebrand, minor = new feature, bugfix = fix).
 
+## 1.3.4 — QR & payment card UX fixes
+- **Layout**: recipient card changed to `align-items: flex-start` so the amount badge and avatar
+  top-align cleanly when the "paying for" list wraps to multiple lines.
+- **QR**: removed the "PromptPay" text overlay from the QR canvas (it was obstructing the QR).
+- **Save QR**: no longer closes the payment dialog — `qr-save-overlay` is now a `<dialog>` that
+  opens with `showModal()` so it sits in the top layer above the payment dialog.
+- **Screenshot hint**: added a second hint line ("หรือ กด Screenshot…" / "Or take a screenshot…")
+  in the QR save overlay for users who prefer that over long-press. Cache-bust `styles.css?v=31`.
+
 ## 1.3.3 — fix "paying for" text persisting when no others selected
 - **Bug fix**: "Paying for …" line stays hidden when selecting only yourself or no one — `.pay-for-line[hidden]` now overrides the `display:block` rule that was defeating the `hidden` attribute. Cache-bust `styles.css?v=30`.
 

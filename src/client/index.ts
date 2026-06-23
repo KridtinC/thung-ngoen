@@ -1787,16 +1787,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Handle Saving QR code image
   const qrSaveOverlay = document.getElementById('qr-save-overlay');
   const qrSaveImg = document.getElementById('qr-save-img');
-  document.getElementById('qr-save-close').addEventListener('click', () => { qrSaveOverlay.hidden = true; });
+  document.getElementById('qr-save-close').addEventListener('click', () => { qrSaveOverlay.close(); });
 
   btnSaveQr.addEventListener('click', () => {
     const canvas = document.getElementById('qr-canvas');
     const dataUrl = canvas.toDataURL('image/png');
     if (isInLineApp) {
-      // Close payment dialog first so overlay isn't behind it
-      paymentDialog.close();
       qrSaveImg.src = dataUrl;
-      qrSaveOverlay.hidden = false;
+      qrSaveOverlay.showModal();
     } else {
       const link = document.createElement('a');
       link.download = `PromptPay_ThungNgoen_${selectedTotal(activePortions, activeSelectedKeys).toFixed(2)}.png`;

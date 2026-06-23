@@ -68,6 +68,7 @@ const en: Dict = {
   // slips
   'slips.title': 'Slips',
   'qr.longPress': 'Long press the image to save to Photos',
+  'qr.screenshot': 'Or take a screenshot to save',
   'common.close': 'Close',
   // settings
   'settings.title': 'Configure Payment Info',
@@ -226,6 +227,7 @@ const th: Dict = {
   'pay.pay': 'จ่าย',
   'slips.title': 'สลิป',
   'qr.longPress': 'กดค้างที่รูปเพื่อบันทึกลงคลังภาพ',
+  'qr.screenshot': 'หรือ กด Screenshot เพื่อบันทึกหน้าจอ',
   'common.close': 'ปิด',
   'settings.title': 'ตั้งค่าข้อมูลการชำระเงิน',
   'settings.blurb': 'ใส่พร้อมเพย์ไว้ เพื่อนจะได้โอนคืนคุณได้ในแตะเดียวตอนคุณสำรองจ่ายเมี้ยว 🐾',

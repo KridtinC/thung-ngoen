@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=30">
+  <link rel="stylesheet" href="styles.css?v=31">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 </head>
 <body>
@@ -240,7 +240,6 @@
           <span class="method-title" data-i18n="pay.scanQr">Scan Dynamic QR Code</span>
           <div class="qr-canvas-wrapper">
             <canvas id="qr-canvas" width="200" height="200"></canvas>
-            <div class="qr-logo-overlay"><span class="qr-logo-text">PromptPay</span></div>
           </div>
           <span class="qr-caption" data-i18n="pay.scanHint">Scan with any Mobile Banking App</span>
           <button class="btn btn-small" id="btn-save-qr" data-i18n="pay.saveQr">Save QR Image</button>
@@ -364,14 +363,15 @@
     </div>
   </dialog>
 
-  <!-- QR Save Overlay (long-press to save in LIFF) -->
-  <div id="qr-save-overlay" hidden>
+  <!-- QR Save Overlay — a <dialog> so showModal() puts it in the top layer above the payment dialog -->
+  <dialog id="qr-save-overlay">
     <div class="qr-save-inner">
       <p class="qr-save-hint" data-i18n="qr.longPress">Long press the image to save to Photos</p>
+      <p class="qr-save-hint qr-save-hint-sub" data-i18n="qr.screenshot">Or take a screenshot to save</p>
       <img id="qr-save-img" src="" alt="PromptPay QR">
       <button class="btn btn-secondary" id="qr-save-close" data-i18n="common.close">Close</button>
     </div>
-  </div>
+  </dialog>
 
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="app.js?v=26" type="module"></script>
