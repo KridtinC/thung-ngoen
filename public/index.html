@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=26">
+  <link rel="stylesheet" href="styles.css?v=27">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 </head>
 <body>
@@ -36,16 +36,17 @@
     <header class="liff-header">
       <div class="header-top-bar">
         <img src="logo.png?v=1" alt="Thung Ngoen" class="brand-logo" id="brand-logo" onerror="this.style.display='none'">
-        <button class="btn-back-home" id="btn-back-home" type="button" hidden>← My Groups</button>
+        <button class="btn-back-home" id="btn-back-home" type="button" data-i18n="nav.back" hidden>← My Groups</button>
         <div class="user-profile-badge" id="user-badge">
-          <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=placeholder" alt="Profile" class="profile-pic" id="liff-user-pic">
+          <div class="profile-pic-wrap">
+            <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=placeholder" alt="Profile" class="profile-pic" id="liff-user-pic">
+            <button class="profile-gear" id="open-settings-btn" commandfor="settings-dialog" command="show-modal" type="button" aria-label="Settings">⚙️</button>
+          </div>
           <div class="user-meta">
             <span class="user-name" id="liff-user-name">Loading...</span>
-            <button class="settings-btn" id="open-settings-btn" commandfor="settings-dialog" command="show-modal">
-              ⚙️ Setup PromptPay
-            </button>
           </div>
         </div>
+        <button class="theme-toggle lang-toggle" id="lang-toggle" type="button" aria-label="Toggle language">EN</button>
         <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">🌙</button>
       </div>
       <div class="header-group-row">
@@ -54,12 +55,12 @@
           <div class="group-subtitle" id="liff-group-subtitle">SELECT OR CREATE A GROUP</div>
         </div>
         <div class="group-header-actions" id="group-header-actions" hidden>
-          <button class="btn btn-secondary btn-small" id="btn-invite-members">🔗 Invite</button>
+          <button class="btn btn-secondary btn-small" id="btn-invite-members" data-i18n="btn.invite">🔗 Invite</button>
           <div class="more-menu-container">
             <button class="btn btn-secondary btn-small btn-more-menu" id="btn-more-menu" type="button">⋯</button>
             <div class="more-menu-dropdown" id="more-menu-dropdown" hidden>
-              <button class="more-menu-item danger" id="btn-leave-group">🚪 Leave Group</button>
-              <button class="more-menu-item danger" id="btn-delete-group">🗑️ Delete Group</button>
+              <button class="more-menu-item danger" id="btn-leave-group" data-i18n="menu.leave">🚪 Leave Group</button>
+              <button class="more-menu-item danger" id="btn-delete-group" data-i18n="menu.delete">🗑️ Delete Group</button>
             </div>
           </div>
         </div>
@@ -71,10 +72,10 @@
 
       <!-- HOME VIEW: My Groups -->
       <section id="view-home" hidden>
-        <button class="btn btn-primary btn-block" id="btn-create-group" commandfor="create-group-dialog" command="show-modal">
+        <button class="btn btn-primary btn-block" id="btn-create-group" commandfor="create-group-dialog" command="show-modal" data-i18n="btn.createGroup">
           + Create New Group
         </button>
-        <h2 class="home-list-title">Your Groups</h2>
+        <h2 class="home-list-title" data-i18n="home.yourGroups">Your Groups</h2>
         <div id="my-groups-list" class="my-groups-list">
           <div class="chat-system-msg">Loading your groups...</div>
         </div>
@@ -83,7 +84,7 @@
       <!-- GROUP VIEW: Summary + Bills -->
       <div id="view-group">
         <section class="card summary-card">
-          <h2>Summary by Date &amp; Payer</h2>
+          <h2 data-i18n="summary.title">Summary by Date &amp; Payer</h2>
           <div id="summary-by-payer">
             <div class="chat-system-msg">Loading...</div>
           </div>
@@ -91,7 +92,7 @@
 
         <section class="bills-section">
           <div class="section-title-bar">
-            <h2>Group Bills by Day</h2>
+            <h2 data-i18n="bills.title">Group Bills by Day</h2>
           </div>
           <div class="daily-bills-container" id="daily-bills-list"></div>
         </section>
@@ -114,40 +115,40 @@
   <!-- 1. CREATE BILL DIALOG -->
   <dialog id="create-bill-dialog">
     <header class="dialog-header">
-      <h2>Create New Bill</h2>
+      <h2 data-i18n="bill.create.title">Create New Bill</h2>
       <button class="close-btn" commandfor="create-bill-dialog" command="close" type="button">&times;</button>
     </header>
     <form id="create-bill-form" class="dialog-form">
       <div class="form-group">
-        <label for="bill-name">Bill Title</label>
-        <input type="text" id="bill-name" placeholder="e.g. Shabu Party, Taxi" required>
+        <label for="bill-name" data-i18n="bill.title.label">Bill Title</label>
+        <input type="text" id="bill-name" placeholder="e.g. Shabu Party, Taxi" data-i18n-ph="bill.title.ph" required>
       </div>
       <div class="form-row form-row-stack">
         <div class="form-group">
-          <label for="bill-date">Date</label>
+          <label for="bill-date" data-i18n="bill.date">Date</label>
           <input type="date" id="bill-date" required>
         </div>
         <div class="form-group">
-          <label for="bill-payer">Payer (Who Advanced?)</label>
+          <label for="bill-payer" data-i18n="bill.payer">Payer (Who Advanced?)</label>
           <select id="bill-payer" required></select>
         </div>
       </div>
       <div class="form-group">
-        <label>Split Method</label>
+        <label data-i18n="bill.splitMethod">Split Method</label>
         <div class="tab-buttons">
-          <button type="button" class="tab-btn active" id="tab-equal">Divide Equally</button>
-          <button type="button" class="tab-btn" id="tab-manual">Manually Split Items</button>
+          <button type="button" class="tab-btn active" id="tab-equal" data-i18n="bill.tab.equal">Divide Equally</button>
+          <button type="button" class="tab-btn" id="tab-manual" data-i18n="bill.tab.manual">Manually Split Items</button>
         </div>
       </div>
       <div id="section-equal" class="split-section active">
         <div class="form-group">
-          <label for="bill-subtotal-equal">Base Amount (THB)</label>
+          <label for="bill-subtotal-equal" data-i18n="bill.baseAmount">Base Amount (THB)</label>
           <input type="number" id="bill-subtotal-equal" step="0.01" min="0.01" placeholder="0.00">
         </div>
         <div class="form-group">
-          <label>Select Payees to Split with</label>
+          <label data-i18n="bill.selectPayees">Select Payees to Split with</label>
           <div class="payee-checklist-container">
-            <button type="button" class="select-all-btn" id="btn-select-all-equal">Select All</button>
+            <button type="button" class="select-all-btn" id="btn-select-all-equal" data-i18n="bill.selectAll">Select All</button>
             <div class="payee-checklist" id="payee-list-equal"></div>
           </div>
         </div>
@@ -155,23 +156,23 @@
       <div id="section-manual" class="split-section">
         <div class="items-list-container">
           <div class="items-header">
-            <span>Item Details</span>
-            <span>Price (THB) &amp; Payees</span>
+            <span data-i18n="bill.itemDetails">Item Details</span>
+            <span data-i18n="bill.priceAndPayees">Price (THB) &amp; Payees</span>
           </div>
           <div class="items-list" id="manual-items-list"></div>
-          <button type="button" class="add-item-btn" id="btn-add-manual-item">+ Add Item</button>
+          <button type="button" class="add-item-btn" id="btn-add-manual-item" data-i18n="bill.addItem">+ Add Item</button>
         </div>
         <div class="form-row summary-row">
-          <span>Items Subtotal:</span>
+          <span data-i18n="bill.itemsSubtotal">Items Subtotal:</span>
           <span id="manual-subtotal-display">0.00 THB</span>
         </div>
       </div>
       <div class="tax-fees-section">
-        <h3>Discount, Taxes &amp; Service Charge</h3>
+        <h3 data-i18n="bill.taxFeesTitle">Discount, Taxes &amp; Service Charge</h3>
         <div class="form-row">
           <label class="checkbox-label">
             <input type="checkbox" id="chk-discount">
-            <span>Discount</span>
+            <span data-i18n="bill.discount">Discount</span>
           </label>
           <div class="tax-input-group disabled" id="group-discount">
             <input type="number" id="val-discount" value="0" min="0" step="0.01"> THB
@@ -180,7 +181,7 @@
         <div class="form-row">
           <label class="checkbox-label">
             <input type="checkbox" id="chk-service-charge">
-            <span>Service Charge</span>
+            <span data-i18n="bill.serviceCharge">Service Charge</span>
           </label>
           <div class="tax-input-group disabled" id="group-service-charge">
             <input type="number" id="val-service-charge" value="10" min="0" max="100">%
@@ -189,7 +190,7 @@
         <div class="form-row">
           <label class="checkbox-label">
             <input type="checkbox" id="chk-vat">
-            <span>VAT</span>
+            <span data-i18n="bill.vat">VAT</span>
           </label>
           <div class="tax-input-group disabled" id="group-vat">
             <input type="number" id="val-vat" value="7" min="0" max="100">%
@@ -197,15 +198,15 @@
         </div>
       </div>
       <div class="bill-total-summary">
-        <div class="summary-line"><span>Subtotal:</span><span id="summary-subtotal">0.00 THB</span></div>
-        <div class="summary-line" id="summary-discount-line" style="display:none"><span>Discount:</span><span id="summary-discount">0.00 THB</span></div>
-        <div class="summary-line" id="summary-sc-line" style="display:none"><span>Service Charge:</span><span id="summary-sc">0.00 THB</span></div>
-        <div class="summary-line" id="summary-vat-line" style="display:none"><span>VAT:</span><span id="summary-vat">0.00 THB</span></div>
-        <div class="summary-line total-line"><span>Grand Total:</span><span id="summary-total">0.00 THB</span></div>
+        <div class="summary-line"><span data-i18n="bill.subtotal">Subtotal:</span><span id="summary-subtotal">0.00 THB</span></div>
+        <div class="summary-line" id="summary-discount-line" style="display:none"><span data-i18n="bill.discount">Discount:</span><span id="summary-discount">0.00 THB</span></div>
+        <div class="summary-line" id="summary-sc-line" style="display:none"><span data-i18n="bill.serviceCharge">Service Charge:</span><span id="summary-sc">0.00 THB</span></div>
+        <div class="summary-line" id="summary-vat-line" style="display:none"><span data-i18n="bill.vat">VAT:</span><span id="summary-vat">0.00 THB</span></div>
+        <div class="summary-line total-line"><span data-i18n="bill.grandTotal">Grand Total:</span><span id="summary-total">0.00 THB</span></div>
       </div>
       <div class="dialog-actions">
-        <button class="btn btn-secondary" commandfor="create-bill-dialog" command="close" type="button">Cancel</button>
-        <button class="btn btn-primary" type="submit" id="btn-save-bill">Save Bill</button>
+        <button class="btn btn-secondary" commandfor="create-bill-dialog" command="close" type="button" data-i18n="common.cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit" id="btn-save-bill" data-i18n="bill.save">Save Bill</button>
       </div>
     </form>
   </dialog>
@@ -213,46 +214,48 @@
   <!-- 2. PAYMENT DETAILS DIALOG -->
   <dialog id="payment-dialog">
     <header class="dialog-header">
-      <h2>Settle Payment</h2>
+      <h2 data-i18n="pay.title">Settle Payment</h2>
       <button class="close-btn" commandfor="payment-dialog" command="close" type="button">&times;</button>
     </header>
     <div class="payment-body">
       <div class="payment-recipient-card">
         <img src="" alt="Payer Profile" class="payer-avatar" id="pay-payer-pic">
         <div class="recipient-info">
-          <span class="pay-label">Paying to</span>
+          <span class="pay-label" data-i18n="pay.payingTo">Paying to</span>
           <span class="pay-name" id="pay-payer-name">Kan</span>
+          <span class="pay-for-line" id="pay-for-line" hidden></span>
         </div>
         <div class="pay-amount-badge" id="pay-amount-display">0.00 THB</div>
       </div>
+      <div class="settle-portions" id="settle-portions" hidden></div>
       <div class="payment-methods">
         <div class="method-card">
           <div class="method-header">
-            <span class="method-title">PromptPay (พร้อมเพย์)</span>
-            <span class="pp-number" id="pay-pp-number">Not configured</span>
+            <span class="method-title" data-i18n="pay.promptpay">PromptPay (พร้อมเพย์)</span>
+            <span class="pp-number" id="pay-pp-number" data-i18n="pay.notConfigured">Not configured</span>
           </div>
-          <button class="btn btn-small" id="btn-copy-pp">Copy Number</button>
+          <button class="btn btn-small" id="btn-copy-pp" data-i18n="pay.copyNumber">Copy Number</button>
         </div>
         <div class="method-card qr-card" id="pay-qr-container">
-          <span class="method-title">Scan Dynamic QR Code</span>
+          <span class="method-title" data-i18n="pay.scanQr">Scan Dynamic QR Code</span>
           <div class="qr-canvas-wrapper">
             <canvas id="qr-canvas" width="200" height="200"></canvas>
             <div class="qr-logo-overlay"><span class="qr-logo-text">PromptPay</span></div>
           </div>
-          <span class="qr-caption">Scan with any Mobile Banking App</span>
-          <button class="btn btn-small" id="btn-save-qr">Save QR Image</button>
+          <span class="qr-caption" data-i18n="pay.scanHint">Scan with any Mobile Banking App</span>
+          <button class="btn btn-small" id="btn-save-qr" data-i18n="pay.saveQr">Save QR Image</button>
         </div>
       </div>
       <div class="slip-upload" id="slip-upload-section">
         <button type="button" class="slip-upload-label" id="slip-upload-btn">
-          📎 <span id="slip-upload-text">Attach payment slip (optional)</span>
+          📎 <span id="slip-upload-text" data-i18n="pay.attachSlip">Attach payment slip (required) 🐾</span>
         </button>
         <div class="slip-preview-wrap" id="slip-preview-wrap" hidden>
           <img id="slip-preview" class="slip-preview" alt="Slip preview">
-          <button type="button" class="slip-remove-btn" id="slip-remove-btn">Remove</button>
+          <button type="button" class="slip-remove-btn" id="slip-remove-btn" data-i18n="pay.remove">Remove</button>
         </div>
       </div>
-      <button class="btn btn-primary btn-block" id="btn-confirm-payment">I have paid this amount</button>
+      <button class="btn btn-primary btn-block" id="btn-confirm-payment" data-i18n="pay.confirm">I have paid this amount</button>
     </div>
   </dialog>
 
@@ -273,7 +276,7 @@
   <!-- DAY SLIPS GALLERY DIALOG -->
   <dialog id="slips-gallery-dialog">
     <header class="dialog-header">
-      <h2 id="slips-gallery-title">Slips</h2>
+      <h2 id="slips-gallery-title" data-i18n="slips.title">Slips</h2>
       <button class="close-btn" commandfor="slips-gallery-dialog" command="close" type="button">&times;</button>
     </header>
     <div class="dialog-form">
@@ -284,25 +287,25 @@
   <!-- 3. USER SETTINGS DIALOG -->
   <dialog id="settings-dialog">
     <header class="dialog-header">
-      <h2>Configure Payment Info</h2>
+      <h2 data-i18n="settings.title">Configure Payment Info</h2>
       <button class="close-btn" commandfor="settings-dialog" command="close" type="button">&times;</button>
     </header>
     <form id="settings-form" class="dialog-form">
-      <div class="alert-info">
+      <div class="alert-info" data-i18n="settings.blurb">
         Provide your PromptPay number so group members can easily settle bills with you when you pay in advance.
       </div>
       <div class="form-group">
-        <label for="settings-display-name">My Display Name (LINE)</label>
+        <label for="settings-display-name" data-i18n="settings.displayName">My Display Name (LINE)</label>
         <input type="text" id="settings-display-name" readonly disabled>
       </div>
       <div class="form-group">
-        <label for="settings-promptpay">PromptPay Number (Mobile / National ID)</label>
-        <input type="text" id="settings-promptpay" placeholder="e.g. 0812345678, 1100200300400" required>
-        <span class="input-hint">Enter 10-digit mobile number or 13-digit National ID. No dashes.</span>
+        <label for="settings-promptpay" data-i18n="settings.ppLabel">PromptPay Number (Mobile / National ID)</label>
+        <input type="text" id="settings-promptpay" placeholder="e.g. 0812345678, 1100200300400" data-i18n-ph="settings.ppPlaceholder" required>
+        <span class="input-hint" data-i18n="settings.ppHint">Enter 10-digit mobile number or 13-digit National ID. No dashes.</span>
       </div>
       <div class="dialog-actions">
-        <button class="btn btn-secondary" commandfor="settings-dialog" command="close" type="button">Cancel</button>
-        <button class="btn btn-primary" type="submit" id="btn-save-settings">Save Settings</button>
+        <button class="btn btn-secondary" commandfor="settings-dialog" command="close" type="button" data-i18n="common.cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit" id="btn-save-settings" data-i18n="settings.save">Save Settings</button>
       </div>
     </form>
   </dialog>
@@ -310,32 +313,32 @@
   <!-- 4. CREATE GROUP DIALOG (two-step: name → invite link) -->
   <dialog id="create-group-dialog">
     <header class="dialog-header">
-      <h2 id="create-group-dialog-title">Create New Group</h2>
+      <h2 id="create-group-dialog-title" data-i18n="group.create.title">Create New Group</h2>
       <button class="close-btn" id="btn-close-create-group" type="button">&times;</button>
     </header>
     <form id="create-group-form" class="dialog-form">
-      <div class="alert-info">Create a group, then share the invite link with your friends.</div>
+      <div class="alert-info" data-i18n="group.create.blurb">Create a group, then share the invite link with your friends.</div>
       <div class="form-group">
-        <label for="new-group-name">Group Name</label>
-        <input type="text" id="new-group-name" placeholder="e.g. Trip to Chiang Mai" required>
+        <label for="new-group-name" data-i18n="group.name">Group Name</label>
+        <input type="text" id="new-group-name" placeholder="e.g. Trip to Chiang Mai" data-i18n-ph="group.name.ph" required>
       </div>
       <div class="dialog-actions">
-        <button class="btn btn-secondary" id="btn-cancel-create" type="button">Cancel</button>
-        <button class="btn btn-primary" type="submit">Create Group</button>
+        <button class="btn btn-secondary" id="btn-cancel-create" type="button" data-i18n="common.cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit" data-i18n="group.create.submit">Create Group</button>
       </div>
     </form>
     <div id="create-group-invite-step" class="dialog-form" hidden>
-      <div class="alert-info">🎉 Group created! Share this link to invite members.</div>
+      <div class="alert-info" data-i18n="group.created.blurb">🎉 Group created! Share this link to invite members.</div>
       <div class="form-group">
-        <label>Invite Link</label>
+        <label data-i18n="group.inviteLink">Invite Link</label>
         <div class="invite-link-row">
           <div class="invite-link-box flex-grow"><span id="created-invite-link-text"></span></div>
-          <button class="btn btn-secondary btn-small" id="btn-copy-created-invite" type="button">Copy</button>
+          <button class="btn btn-secondary btn-small" id="btn-copy-created-invite" type="button" data-i18n="common.copy">Copy</button>
         </div>
       </div>
       <div class="dialog-actions">
-        <button class="btn btn-secondary" id="btn-close-after-create" type="button">Close</button>
-        <button class="btn btn-primary" id="btn-open-created-group" type="button">Open Group →</button>
+        <button class="btn btn-secondary" id="btn-close-after-create" type="button" data-i18n="common.close">Close</button>
+        <button class="btn btn-primary" id="btn-open-created-group" type="button" data-i18n="group.openGroup">Open Group →</button>
       </div>
     </div>
   </dialog>
@@ -343,20 +346,20 @@
   <!-- 5. INVITE MEMBERS DIALOG -->
   <dialog id="invite-dialog">
     <header class="dialog-header">
-      <h2>Invite Members</h2>
+      <h2 data-i18n="invite.title">Invite Members</h2>
       <button class="close-btn" commandfor="invite-dialog" command="close" type="button">&times;</button>
     </header>
     <div class="dialog-form">
-      <div class="alert-info">Share this link. Anyone who opens it will join this group and can split bills with you.</div>
+      <div class="alert-info" data-i18n="invite.blurb">Share this link. Anyone who opens it will join this group and can split bills with you.</div>
       <div class="form-group">
-        <label>Invite Link</label>
+        <label data-i18n="group.inviteLink">Invite Link</label>
         <div class="invite-link-row">
           <div class="invite-link-box flex-grow"><span id="invite-link-text"></span></div>
-          <button class="btn btn-secondary btn-small" id="btn-copy-invite" type="button">Copy</button>
+          <button class="btn btn-secondary btn-small" id="btn-copy-invite" type="button" data-i18n="common.copy">Copy</button>
         </div>
       </div>
       <div class="dialog-actions">
-        <button class="btn btn-primary" id="btn-share-invite" type="button">Share to LINE</button>
+        <button class="btn btn-primary" id="btn-share-invite" type="button" data-i18n="invite.share">Share to LINE</button>
       </div>
     </div>
   </dialog>
@@ -364,13 +367,13 @@
   <!-- QR Save Overlay (long-press to save in LIFF) -->
   <div id="qr-save-overlay" hidden>
     <div class="qr-save-inner">
-      <p class="qr-save-hint">Long press the image to save to Photos</p>
+      <p class="qr-save-hint" data-i18n="qr.longPress">Long press the image to save to Photos</p>
       <img id="qr-save-img" src="" alt="PromptPay QR">
-      <button class="btn btn-secondary" id="qr-save-close">Close</button>
+      <button class="btn btn-secondary" id="qr-save-close" data-i18n="common.close">Close</button>
     </div>
   </div>
 
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script src="app.js?v=23" type="module"></script>
+  <script src="app.js?v=24" type="module"></script>
 </body>
 </html>

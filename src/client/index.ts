@@ -3,6 +3,12 @@
 // (HTMLInputElement/Dialog/Canvas casts) is a tracked follow-up.
 import { generatePromptPayQR } from '../../lib/promptpay';
 import { fmt } from '../../lib/money';
+import { canInvite, canLeave, canDelete } from '../../lib/group-rules';
+import {
+  portionKey, defaultSelectedKeys, selectedTotal, selectionsFor, payingForNames
+} from '../../lib/settle-select';
+import { canConfirmPayment } from '../../lib/pay-rules';
+import { t, detectLang } from '../../lib/i18n';
 
 // Detect LINE in-app browser
 const isInLineApp = /Line/i.test(navigator.userAgent);
@@ -173,6 +179,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const openSettingsBtn = document.getElementById('open-settings-btn');
 
   let activePaymentContext = null;
+  // Per-payer multi-select settle state (features 4, 8, 9)
+  let activePortions = [];
+  let activeSelectedKeys = [];
+  let lastDailyGroups = [];
+  const settlePortionsEl = document.getElementById('settle-portions');
+  const payForLine = document.getElementById('pay-for-line');
+
+  // All of a payer's still-unpaid (bill × payee) portions, across every loaded day.
+  const getUnpaidPortionsForPayer = (payerLineId) => {
+    const portions = [];
+    lastDailyGroups.forEach(dg => (dg.bills || []).forEach(bill => {
+      if (bill.status !== 'unpaid' || bill.payerId.lineId !== payerLineId) return;
+      bill.payees.forEach(p => {
+        if (p.status !== 'unpaid' || p.payeeId._id === bill.payerId._id) return;
+        portions.push({
+          billId: bill._id, payeeLineId: p.payeeId.lineId,
+          payeeName: p.payeeId.displayName, billName: bill.name, amount: p.amount
+        });
+      });
+    }));
+    return portions;
+  };
 
   // Initialize LIFF SDK once
   const ensureLiff = async () => {
@@ -274,9 +302,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize: authenticate via LINE LIFF, then go to My Groups home.
   // The only exception is an ?invite= deep-link, which joins a group first.
+  // ----------------------------------------------------
+  // i18n — Thai/English (feature 1). Static text via [data-i18n]; dynamic via TT().
+  // ----------------------------------------------------
+  let currentLang = detectLang();
+  const TT = (key, vars) => t(currentLang, key, vars);
+  const langToggle = document.getElementById('lang-toggle');
+  const applyI18n = () => {
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = TT(el.getAttribute('data-i18n')); });
+    document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = TT(el.getAttribute('data-i18n-ph')); });
+    if (langToggle) langToggle.textContent = currentLang === 'en' ? 'ไทย' : 'EN';
+    document.documentElement.lang = currentLang;
+  };
+  if (langToggle) langToggle.addEventListener('click', () => {
+    currentLang = currentLang === 'en' ? 'th' : 'en';
+    try { localStorage.setItem('lang', currentLang); } catch (e) {}
+    applyI18n();
+    // re-render dynamic content in the new language
+    if (!viewGroup.hidden) refreshAllData();
+    else if (!viewHome.hidden) loadMyGroups();
+  });
+  applyI18n();
+
   const initApp = async () => {
     try {
       await ensureLiff();
+      // Refine language from the LINE locale unless the user already chose one
+      try { if (!localStorage.getItem('lang') && liff.getLanguage) { currentLang = detectLang(liff.getLanguage()); applyI18n(); } } catch (e) {}
       const profile = await liff.getProfile();
       currentUser = profile;
 
@@ -300,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // My Groups + invite-link flows
   // ----------------------------------------------------
   const loadMyGroups = async () => {
-    myGroupsList.innerHTML = '<div class="chat-system-msg">Loading your groups...</div>';
+    myGroupsList.innerHTML = `<div class="chat-system-msg">${TT('home.loading')}</div>`;
     try {
       const res = await fetch(`/api/users/${currentUser.userId}/groups`);
       const data = await res.json();
@@ -512,10 +564,14 @@ document.addEventListener('DOMContentLoaded', () => {
       // Track current group for the Invite button
       currentGroup = {
         inviteCode: data.group.inviteCode,
+        lineGroupId: data.group.lineGroupId || '',
         isLineGroup: !!data.group.lineGroupId,
         name: data.group.name
       };
-      btnInviteMembers.style.visibility = currentGroup.inviteCode ? 'visible' : 'hidden';
+      // LINE-synced groups are managed by LINE: no invite / leave / delete (feature 5)
+      btnInviteMembers.style.display = (canInvite(currentGroup) && currentGroup.inviteCode) ? '' : 'none';
+      const moreMenuContainer = document.querySelector('.more-menu-container');
+      if (moreMenuContainer) moreMenuContainer.style.display = (canLeave(currentGroup) || canDelete(currentGroup)) ? '' : 'none';
 
       // Update settings dialog name field
       settingsNameInput.value = currentUser.displayName;
@@ -545,10 +601,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Summary: by Date → by Payer (collapsible)
   // ----------------------------------------------------
   const renderSummary = (dailyGroups) => {
+    lastDailyGroups = dailyGroups || [];
     summaryByPayer.innerHTML = '';
 
     if (dailyGroups.length === 0) {
-      summaryByPayer.innerHTML = '<div class="chat-system-msg">🐾 No bills yet.</div>';
+      summaryByPayer.innerHTML = `<div class="chat-system-msg">${TT('bills.empty')}</div>`;
       return;
     }
 
@@ -619,7 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const payAllBtnHTML = myUnpaidBillIds.length > 0
-          ? `<button class="btn btn-primary btn-block btn-pay-all-summary" style="margin-top:10px">Pay ${fmt(myUnpaidTotal)} THB</button>`
+          ? `<button class="btn btn-primary btn-block btn-pay-all-summary" style="margin-top:10px">${TT('pay.pay')} ${fmt(myUnpaidTotal)} THB</button>`
           : '';
 
         block.innerHTML = `
@@ -652,7 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (payAllBtn) {
           payAllBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            openPaymentModal(payer, myUnpaidTotal, myUnpaidBillIds);
+            openPaymentModal(payer, getUnpaidPortionsForPayer(payer.lineId));
           });
         }
 
@@ -865,7 +922,7 @@ document.addEventListener('DOMContentLoaded', () => {
         historySection.className = 'history-section';
         historySection.innerHTML = `
           <button class="history-toggle" id="history-toggle" type="button">
-            <span>🗂️ History (${totalHistory})</span>
+            <span>${TT('history.title', { n: totalHistory })}</span>
             <span class="history-chevron">▾</span>
           </button>
           <div class="history-body" id="history-body"><div class="history-body-inner"></div></div>
@@ -959,13 +1016,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isUnpaid && !payeeIsPayer) {
         if (isActiveUserPayee) {
           // It's my own share — pay it
-          actionBtn = `<button class="btn btn-secondary btn-small btn-pay-payee" data-amount="${payee.amount}" data-payee="${payee.payeeId.lineId}">Pay</button>`;
+          actionBtn = `<button class="btn btn-secondary btn-small btn-pay-payee" data-amount="${payee.amount}" data-payee="${payee.payeeId.lineId}">${TT('pay.pay')}</button>`;
         } else if (isActiveUserPayer) {
           // I'm the payer and received cash from this friend — settle manually
-          actionBtn = `<button class="btn btn-secondary btn-small btn-settle-payee" data-user-id="${payee.payeeId.lineId}">Mark Paid</button>`;
+          actionBtn = `<button class="btn btn-secondary btn-small btn-settle-payee" data-user-id="${payee.payeeId.lineId}">${TT('pay.markPaid')}</button>`;
         } else {
           // Pay on behalf of a friend (row already shows whose share it is)
-          actionBtn = `<button class="btn btn-secondary btn-small btn-pay-payee" data-amount="${payee.amount}" data-payee="${payee.payeeId.lineId}" title="Pay for ${payee.payeeId.displayName}">Pay</button>`;
+          actionBtn = `<button class="btn btn-secondary btn-small btn-pay-payee" data-amount="${payee.amount}" data-payee="${payee.payeeId.lineId}" title="Pay for ${payee.payeeId.displayName}">${TT('pay.pay')}</button>`;
         }
       }
 
@@ -998,11 +1055,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Bind events for payee click triggers
     container.querySelectorAll('.btn-pay-payee').forEach(btn => {
       btn.addEventListener('click', () => {
+        const payeeLineId = btn.getAttribute('data-payee');
         openPaymentModal(
           bill.payerId,
-          parseFloat(btn.getAttribute('data-amount')),
-          [bill._id],
-          btn.getAttribute('data-payee')
+          getUnpaidPortionsForPayer(bill.payerId.lineId),
+          [portionKey({ billId: bill._id, payeeLineId })]
         );
       });
     });
@@ -1437,7 +1494,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // friends have no way to settle the bill through the app.
     const payerMember = groupMembers.find(m => m.lineId === payerLineId);
     if (!payerMember?.promptPay) {
-      alert(`${payerMember?.displayName || 'The selected payer'} has not set up PromptPay yet. They need to add it (⚙️ Setup PromptPay) before being set as the payer.`);
+      alert(TT('alert.payerNoPromptPay', { name: payerMember?.displayName || 'The selected payer' }));
       return;
     }
 
@@ -1515,54 +1572,89 @@ document.addEventListener('DOMContentLoaded', () => {
   // ----------------------------------------------------
   // Payment Modal logic & PromptPay QR rendering
   // ----------------------------------------------------
-  // billIds is an array; pass [] to show modal without confirm button.
-  // payeeLineId is who the payment settles for (defaults to the active user).
-  const openPaymentModal = (payer, amount, billIds = [], payeeLineId = currentUser.userId) => {
-    activePaymentContext = { payer, amount, billIds, payeeLineId };
-    
+  // Render the per-payer portion checklist (only when there's a real choice: >1 portion).
+  const renderPortionChecklist = () => {
+    if (!settlePortionsEl) return;
+    if (activePortions.length <= 1) { settlePortionsEl.hidden = true; settlePortionsEl.innerHTML = ''; return; }
+    const selSet = new Set(activeSelectedKeys);
+    settlePortionsEl.hidden = false;
+    settlePortionsEl.innerHTML = `<div class="settle-portions-title">${TT('pay.selectPortions')}</div>` +
+      activePortions.map(p => {
+        const key = portionKey(p);
+        const isMe = p.payeeLineId === currentUser.userId;
+        return `<label class="settle-portion-row">
+          <input type="checkbox" class="settle-portion-chk" data-key="${key}" ${selSet.has(key) ? 'checked' : ''}>
+          <span class="settle-portion-name">${p.payeeName}${isMe ? ' <span class="me-tag">(you)</span>' : ''} · ${p.billName}</span>
+          <span class="settle-portion-amt">${fmt(p.amount)}</span>
+        </label>`;
+      }).join('');
+    settlePortionsEl.querySelectorAll('.settle-portion-chk').forEach(chk => {
+      chk.addEventListener('change', () => {
+        const key = chk.getAttribute('data-key');
+        if (chk.checked) { if (!activeSelectedKeys.includes(key)) activeSelectedKeys.push(key); }
+        else activeSelectedKeys = activeSelectedKeys.filter(k => k !== key);
+        renderSettleState();
+      });
+    });
+  };
+
+  // Slip required (feature 9): confirm enabled only with a selection + a slip (when QR flow).
+  const updateConfirmGate = () => {
+    const payer = activePaymentContext?.payer;
+    if (!payer) return;
+    const hasSel = activeSelectedKeys.length > 0;
+    btnConfirmPayment.disabled = !hasSel || !canConfirmPayment({ hasPromptPay: !!payer.promptPay, hasSlip: !!pendingSlipFile });
+  };
+
+  // Recompute total, QR, "paying for …" line and the confirm gate from the current selection.
+  const renderSettleState = () => {
+    const payer = activePaymentContext?.payer;
+    if (!payer) return;
+    const total = selectedTotal(activePortions, activeSelectedKeys);
+    payAmountDisplay.textContent = `${fmt(total)} THB`;
+    const others = payingForNames(activePortions, activeSelectedKeys, currentUser.userId);
+    if (payForLine) {
+      if (others.length) { payForLine.textContent = TT('pay.payingFor', { names: others.join(', ') }); payForLine.hidden = false; }
+      else payForLine.hidden = true;
+    }
+    if (payer.promptPay && total > 0) {
+      const qrPayload = generatePromptPayQR(payer.promptPay, total);
+      if (qrPayload) drawQRCode(qrPayload, 'qr-canvas');
+    }
+    updateConfirmGate();
+  };
+
+  // portions: that payer's unpaid (bill × payee) portions. preselectKeys: optional pre-checked keys.
+  const openPaymentModal = (payer, portions = [], preselectKeys = null) => {
+    activePaymentContext = { payer };
+    activePortions = portions;
+    activeSelectedKeys = (preselectKeys && preselectKeys.length)
+      ? preselectKeys.slice()
+      : defaultSelectedKeys(portions, currentUser.userId);
+    if (activeSelectedKeys.length === 0) activeSelectedKeys = portions.map(portionKey);
+
     payPayerPic.src = payer.pictureUrl;
     payPayerName.textContent = payer.displayName;
-    payAmountDisplay.textContent = `${fmt(amount)} THB`;
 
     if (!payer.promptPay) {
-      // If payer has not configured payment info
-      payPpNumber.textContent = 'Not configured ⚠️';
+      payPpNumber.textContent = TT('pay.notConfigured') + ' ⚠️';
       payPpNumber.classList.add('negative');
       btnCopyPp.disabled = true;
       payQrContainer.style.display = 'none';
     } else {
-      // PromptPay configured!
       payPpNumber.textContent = formatPromptPayNumber(payer.promptPay);
       payPpNumber.classList.remove('negative');
       btnCopyPp.disabled = false;
       payQrContainer.style.display = 'flex';
-      
-      // Generate dynamically the EMVCo QR Code payload
-      const qrPayload = generatePromptPayQR(payer.promptPay, amount);
-      if (qrPayload) {
-        drawQRCode(qrPayload, 'qr-canvas');
-      } else {
-        console.error("Failed to generate PromptPay payload");
-        payQrContainer.style.display = 'none';
-      }
-
     }
 
-    // Reset slip upload state
     resetSlipUpload();
+    btnConfirmPayment.style.display = 'block';
+    btnConfirmPayment.title = payer.promptPay ? '' : `${payer.displayName} has not set up PromptPay yet`;
+    slipUploadSection.style.display = payer.promptPay ? 'block' : 'none';
 
-    // Show confirm button + slip upload only when there are bills to mark paid AND payer has PromptPay
-    if (billIds.length > 0) {
-      btnConfirmPayment.style.display = 'block';
-      btnConfirmPayment.disabled = !payer.promptPay;
-      btnConfirmPayment.title = payer.promptPay ? '' : `${payer.displayName} has not set up PromptPay yet`;
-      slipUploadSection.style.display = payer.promptPay ? 'block' : 'none';
-    } else {
-      btnConfirmPayment.style.display = 'none';
-      btnConfirmPayment.disabled = false;
-      slipUploadSection.style.display = 'none';
-    }
-
+    renderPortionChecklist();
+    renderSettleState();
     paymentDialog.showModal();
   };
 
@@ -1574,7 +1666,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (slipFileInput) slipFileInput.value = '';
     if (slipPreviewWrap) slipPreviewWrap.hidden = true;
     if (slipPreview) slipPreview.src = '';
-    if (slipUploadText) slipUploadText.textContent = 'Attach payment slip (optional)';
+    if (slipUploadText) slipUploadText.textContent = TT('pay.attachSlip');
+    if (activePaymentContext) updateConfirmGate();
   }
 
   // Trigger the (body-level) file input from the button inside the dialog.
@@ -1591,7 +1684,8 @@ document.addEventListener('DOMContentLoaded', () => {
       pendingSlipFile = file;
       slipPreview.src = URL.createObjectURL(file);
       slipPreviewWrap.hidden = false;
-      slipUploadText.textContent = 'Change slip';
+      slipUploadText.textContent = TT('pay.slipAttached');
+      updateConfirmGate();
     });
   }
   if (slipRemoveBtn) slipRemoveBtn.addEventListener('click', resetSlipUpload);
@@ -1705,7 +1799,7 @@ document.addEventListener('DOMContentLoaded', () => {
       qrSaveOverlay.hidden = false;
     } else {
       const link = document.createElement('a');
-      link.download = `PromptPay_ThungNgoen_${activePaymentContext?.amount.toFixed(2)}.png`;
+      link.download = `PromptPay_ThungNgoen_${selectedTotal(activePortions, activeSelectedKeys).toFixed(2)}.png`;
       link.href = dataUrl;
       link.click();
     }
@@ -1713,14 +1807,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Settlement Confirm Payment — handles single or multiple bills at once
   btnConfirmPayment.addEventListener('click', async () => {
-    const ctx = activePaymentContext;
-    if (!ctx || ctx.billIds.length === 0) return;
+    const payer = activePaymentContext?.payer;
+    const selections = selectionsFor(activePortions, activeSelectedKeys);
+    if (!payer || selections.length === 0) return;
+
+    // Feature 9: a slip is required before confirming a QR payment.
+    if (!canConfirmPayment({ hasPromptPay: !!payer.promptPay, hasSlip: !!pendingSlipFile })) {
+      alert(TT('pay.slipRequired'));
+      return;
+    }
 
     btnConfirmPayment.disabled = true;
-    btnConfirmPayment.textContent = 'Processing...';
+    btnConfirmPayment.textContent = TT('common.loading');
 
     try {
-      // Upload the slip once and attach the same key to each settled bill
+      // Upload the slip once and attach the same key to every settled portion
       let slipKey = null;
       try {
         slipKey = await uploadPendingSlip();
@@ -1730,18 +1831,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      for (const billId of ctx.billIds) {
-        await fetch(`/api/bills/${billId}/pay`, {
+      for (const sel of selections) {
+        await fetch(`/api/bills/${sel.billId}/pay`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payeeLineId: ctx.payeeLineId || currentUser.userId, slipKey })
+          body: JSON.stringify({ payeeLineId: sel.payeeLineId, slipKey })
         });
       }
       paymentDialog.close();
       await refreshAllData();
     } finally {
       btnConfirmPayment.disabled = false;
-      btnConfirmPayment.textContent = 'I have paid this amount';
+      btnConfirmPayment.textContent = TT('pay.confirm');
     }
   });
 
