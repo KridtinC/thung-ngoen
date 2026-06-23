@@ -2,6 +2,7 @@ import { Elysia } from 'elysia';
 import { User, Group, IUser } from '../../../../db';
 import { LineService } from './service';
 import { GroupService } from '../groups/service';
+import { buildInviteUrl } from '../../../../lib/line-share';
 
 export const line = new Elysia({ name: 'line' })
   .post('/webhook', async ({ body, set }) => {
@@ -157,7 +158,7 @@ export const line = new Elysia({ name: 'line' })
                       action: {
                         type: 'uri',
                         label: 'เปิดถุงเงิน 🐾',
-                        uri: `https://liff.line.me/${process.env.LINE_LIFF_ID || 'mock-liff-id'}`
+                        uri: buildInviteUrl(process.env.LINE_LIFF_ID || 'mock-liff-id', group.inviteCode)
                       }
                     }
                   ]

@@ -4,6 +4,7 @@ import { decryptPII } from '../../../../lib/crypto';
 import { simplifyDebts } from '../../../../lib/settle';
 import { GroupService } from './service';
 import { groupModels } from './model';
+import { canLeave, canDelete } from '../../../../lib/group-rules';
 
 export const groups = new Elysia({ name: 'groups' })
   .use(groupModels)
@@ -256,6 +257,7 @@ export const groups = new Elysia({ name: 'groups' })
 
       const group = await GroupService.resolve(groupId);
       if (!group) { set.status = 404; return { error: 'Group not found' }; }
+      if (!canLeave(group)) { set.status = 403; return { error: 'LINE groups are managed by LINE and can\'t be left from the app' }; }
 
       const user = await User.findOne({ lineId });
       if (!user) { set.status = 404; return { error: 'User not found' }; }
@@ -283,6 +285,7 @@ export const groups = new Elysia({ name: 'groups' })
 
       const group = await GroupService.resolve(groupId);
       if (!group) { set.status = 404; return { error: 'Group not found' }; }
+      if (!canDelete(group)) { set.status = 403; return { error: 'LINE groups are managed by LINE and can\'t be deleted from the app' }; }
 
       const user = await User.findOne({ lineId });
       if (!user) { set.status = 404; return { error: 'User not found' }; }

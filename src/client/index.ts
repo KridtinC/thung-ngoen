@@ -3,6 +3,12 @@
 // (HTMLInputElement/Dialog/Canvas casts) is a tracked follow-up.
 import { generatePromptPayQR } from '../../lib/promptpay';
 import { fmt } from '../../lib/money';
+import { canInvite, canLeave, canDelete } from '../../lib/group-rules';
+import {
+  portionKey, defaultSelectedKeys, selectedTotal, selectionsFor, payingForNames
+} from '../../lib/settle-select';
+import { canConfirmPayment } from '../../lib/pay-rules';
+import { t, detectLang } from '../../lib/i18n';
 
 // Detect LINE in-app browser
 const isInLineApp = /Line/i.test(navigator.userAgent);
@@ -173,6 +179,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const openSettingsBtn = document.getElementById('open-settings-btn');
 
   let activePaymentContext = null;
+  // Per-payer multi-select settle state (features 4, 8, 9)
+  let activePortions = [];
+  let activeSelectedKeys = [];
+  let lastDailyGroups = [];
+  const settlePortionsEl = document.getElementById('settle-portions');
+  const payForLine = document.getElementById('pay-for-line');
+
+  // All of a payer's still-unpaid (bill × payee) portions, across every loaded day.
+  const getUnpaidPortionsForPayer = (payerLineId) => {
+    const portions = [];
+    lastDailyGroups.forEach(dg => (dg.bills || []).forEach(bill => {
+      if (bill.status !== 'unpaid' || bill.payerId.lineId !== payerLineId) return;
+      bill.payees.forEach(p => {
+        if (p.status !== 'unpaid' || p.payeeId._id === bill.payerId._id) return;
+        portions.push({
+          billId: bill._id, payeeLineId: p.payeeId.lineId,
+          payeeName: p.payeeId.displayName, billName: bill.name, amount: p.amount
+        });
+      });
+    }));
+    return portions;
+  };
 
   // Initialize LIFF SDK once
   const ensureLiff = async () => {
@@ -208,8 +236,8 @@ document.addEventListener('DOMContentLoaded', () => {
       viewGroup.hidden = true;
       fabBtn.style.display = 'none';
       btnBackHome.hidden = true;
-      groupTitle.textContent = 'My Groups';
-      groupSubtitle.textContent = 'Select or create a group';
+      groupTitle.textContent = TT('home.title');
+      groupSubtitle.textContent = TT('subtitle.selectGroup');
       groupHeaderActions.hidden = true;
     } else {
       viewHome.hidden = true;
@@ -253,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.textContent = doneLabel;
       setTimeout(() => { btn.textContent = original; }, 1600);
     } else {
-      alert(`Copy this link:\n\n${text}`);
+      alert(TT('alert.copyLink') + '\n\n' + text);
     }
   };
 
@@ -274,9 +302,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize: authenticate via LINE LIFF, then go to My Groups home.
   // The only exception is an ?invite= deep-link, which joins a group first.
+  // ----------------------------------------------------
+  // i18n — Thai/English (feature 1). Static text via [data-i18n]; dynamic via TT().
+  // ----------------------------------------------------
+  let currentLang = detectLang();
+  const TT = (key, vars) => t(currentLang, key, vars);
+  const langToggle = document.getElementById('lang-toggle');
+  const applyI18n = () => {
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = TT(el.getAttribute('data-i18n')); });
+    document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = TT(el.getAttribute('data-i18n-ph')); });
+    if (langToggle) langToggle.textContent = currentLang === 'en' ? 'ไทย' : 'EN';
+    document.documentElement.lang = currentLang;
+  };
+  if (langToggle) langToggle.addEventListener('click', () => {
+    currentLang = currentLang === 'en' ? 'th' : 'en';
+    try { localStorage.setItem('lang', currentLang); } catch (e) {}
+    applyI18n();
+    // re-render dynamic content in the new language
+    if (!viewGroup.hidden) refreshAllData();
+    else if (!viewHome.hidden) loadMyGroups();
+  });
+  applyI18n();
+
   const initApp = async () => {
     try {
       await ensureLiff();
+      // Refine language from the LINE locale unless the user already chose one
+      try { if (!localStorage.getItem('lang') && liff.getLanguage) { currentLang = detectLang(liff.getLanguage()); applyI18n(); } } catch (e) {}
       const profile = await liff.getProfile();
       currentUser = profile;
 
@@ -300,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // My Groups + invite-link flows
   // ----------------------------------------------------
   const loadMyGroups = async () => {
-    myGroupsList.innerHTML = '<div class="chat-system-msg">Loading your groups...</div>';
+    myGroupsList.innerHTML = `<div class="chat-system-msg">${TT('home.loading')}</div>`;
     try {
       const res = await fetch(`/api/users/${currentUser.userId}/groups`);
       const data = await res.json();
@@ -343,7 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     } catch (err) {
       console.error(err);
-      myGroupsList.innerHTML = '<div class="chat-system-msg">Error loading groups.</div>';
+      myGroupsList.innerHTML = `<div class="chat-system-msg">${TT('home.error')}</div>`;
     }
   };
 
@@ -362,7 +414,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
         await openGroup(data.key);
       } else {
-        alert('This invite link is invalid or has expired.');
+        alert(TT('alert.inviteInvalid'));
         await openHome();
       }
     } catch (err) {
@@ -387,7 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const resetCreateGroupDialog = () => {
     createGroupForm.hidden = false;
     createGroupInviteStep.hidden = true;
-    createGroupDialogTitle.textContent = 'Create New Group';
+    createGroupDialogTitle.textContent = TT('group.create.title');
     newGroupNameInput.value = '';
   };
 
@@ -418,24 +470,24 @@ document.addEventListener('DOMContentLoaded', () => {
         // Switch dialog to step 2: show invite link
         createGroupForm.hidden = true;
         createGroupInviteStep.hidden = false;
-        createGroupDialogTitle.textContent = 'Group Created! 🎉';
+        createGroupDialogTitle.textContent = TT('group.createdTitle');
         const link = buildInviteLink(data.inviteCode);
         createdInviteLinkText.textContent = link;
         createGroupInviteStep.dataset.link = link;
         createGroupInviteStep.dataset.key = data.inviteCode;
         await loadMyGroups();
       } else {
-        alert('Could not create group. Please try again.');
+        alert(TT('alert.groupCreateFail'));
       }
     } catch (err) {
       console.error(err);
-      alert('Error creating group.');
+      alert(TT('alert.groupCreateError'));
     }
   });
 
   // Step 2: Copy button inside create-group dialog
   btnCopyCreatedInvite.addEventListener('click', () => {
-    copyToClipboard(createGroupInviteStep.dataset.link, btnCopyCreatedInvite, 'Copied! ✅', 'Copy');
+    copyToClipboard(createGroupInviteStep.dataset.link, btnCopyCreatedInvite, TT('common.copied'), TT('common.copy'));
   });
 
   // Step 2: Open Group button
@@ -452,7 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Copy invite link (invite-dialog)
   btnCopyInvite.addEventListener('click', () => {
-    copyToClipboard(inviteDialog.dataset.link, btnCopyInvite, 'Copied! ✅', 'Copy');
+    copyToClipboard(inviteDialog.dataset.link, btnCopyInvite, TT('common.copied'), TT('common.copy'));
   });
 
   // Share invite link via LINE share picker → Web Share → clipboard
@@ -465,7 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (navigator.share) {
         await navigator.share({ text: msg });
       } else {
-        copyToClipboard(link, btnShareInvite, 'Link Copied!', 'Share to LINE');
+        copyToClipboard(link, btnShareInvite, TT('common.linkCopied'), TT('invite.share'));
       }
     } catch (err) {
       console.error('Share failed:', err);
@@ -512,10 +564,14 @@ document.addEventListener('DOMContentLoaded', () => {
       // Track current group for the Invite button
       currentGroup = {
         inviteCode: data.group.inviteCode,
+        lineGroupId: data.group.lineGroupId || '',
         isLineGroup: !!data.group.lineGroupId,
         name: data.group.name
       };
-      btnInviteMembers.style.visibility = currentGroup.inviteCode ? 'visible' : 'hidden';
+      // LINE-synced groups are managed by LINE: no invite / leave / delete (feature 5)
+      btnInviteMembers.style.display = (canInvite(currentGroup) && currentGroup.inviteCode) ? '' : 'none';
+      const moreMenuContainer = document.querySelector('.more-menu-container');
+      if (moreMenuContainer) moreMenuContainer.style.display = (canLeave(currentGroup) || canDelete(currentGroup)) ? '' : 'none';
 
       // Update settings dialog name field
       settingsNameInput.value = currentUser.displayName;
@@ -527,7 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
       groupMembers.forEach(member => {
         const opt = document.createElement('option');
         opt.value = member.lineId;
-        opt.textContent = member.promptPay ? member.displayName : `${member.displayName} (no PromptPay)`;
+        opt.textContent = member.promptPay ? member.displayName : `${member.displayName} ${TT('bill.noPromptPay')}`;
         opt.dataset.hasPromptpay = member.promptPay ? '1' : '';
         if (member.lineId === currentUser.userId) {
           opt.selected = true;
@@ -537,7 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     } catch (err) {
       console.error(err);
-      groupTitle.textContent = "Error Loading Group";
+      groupTitle.textContent = TT('group.loadError');
     }
   };
 
@@ -545,10 +601,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Summary: by Date → by Payer (collapsible)
   // ----------------------------------------------------
   const renderSummary = (dailyGroups) => {
+    lastDailyGroups = dailyGroups || [];
     summaryByPayer.innerHTML = '';
 
     if (dailyGroups.length === 0) {
-      summaryByPayer.innerHTML = '<div class="chat-system-msg">🐾 No bills yet.</div>';
+      summaryByPayer.innerHTML = `<div class="chat-system-msg">${TT('bills.empty')}</div>`;
       return;
     }
 
@@ -571,7 +628,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const dateSection = document.createElement('div');
       dateSection.className = 'summary-date-section';
 
-      const dateLabel = new Date(dayGroup.date + 'T12:00:00').toLocaleDateString('en-US', {
+      const dateLabel = new Date(dayGroup.date + 'T12:00:00').toLocaleDateString(currentLang === 'th' ? 'th-TH' : 'en-US', {
         weekday: 'long', year: 'numeric', month: 'short', day: 'numeric'
       });
       dateSection.innerHTML = `<div class="summary-date-label">${dateLabel}</div>`;
@@ -608,25 +665,25 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="summary-payee-item ${isMe ? 'is-me' : ''}">
                 <div class="summary-payee-left">
                   <img src="${p.payeeId.pictureUrl}" alt="${p.payeeId.displayName}" class="summary-mini-avatar">
-                  <span>${p.payeeId.displayName}${isMe ? ' <span class="me-tag">(you)</span>' : ''}</span>
+                  <span>${p.payeeId.displayName}${isMe ? ` <span class="me-tag">${TT('tag.you')}</span>` : ''}</span>
                 </div>
                 <div class="summary-payee-right">
                   <span class="summary-payee-amount">${fmt(p.amount)} THB</span>
-                  <span class="badge ${p.status}">${p.status}</span>
+                  <span class="badge ${p.status}">${TT('status.' + p.status)}</span>
                 </div>
               </div>`;
           });
         });
 
         const payAllBtnHTML = myUnpaidBillIds.length > 0
-          ? `<button class="btn btn-primary btn-block btn-pay-all-summary" style="margin-top:10px">Pay ${fmt(myUnpaidTotal)} THB</button>`
+          ? `<button class="btn btn-primary btn-block btn-pay-all-summary" style="margin-top:10px">${TT('pay.pay')} ${fmt(myUnpaidTotal)} THB</button>`
           : '';
 
         block.innerHTML = `
           <div class="summary-payer-header">
             <div class="summary-payer-info">
               <img src="${payer.pictureUrl}" alt="${payer.displayName}" class="summary-payer-avatar">
-              <span class="summary-payer-name">${payer.displayName} <span class="payer-tag">paid</span></span>
+              <span class="summary-payer-name">${payer.displayName} <span class="payer-tag">${TT('tag.advanced')}</span></span>
             </div>
             <div class="summary-payer-meta">
               <span class="summary-payer-total">${fmt(totalPaid)} THB</span>
@@ -635,7 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           ${payAllBtnHTML}
           <div class="summary-payer-details" id="${uid}"><div class="summary-payer-details-inner">
-            ${detailsHTML || '<div class="summary-no-others">No one else owes for this.</div>'}
+            ${detailsHTML || `<div class="summary-no-others">${TT('summary.noOthers')}</div>`}
           </div></div>`;
 
         // Toggle expand/collapse (header only, not the Pay All button)
@@ -652,7 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (payAllBtn) {
           payAllBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            openPaymentModal(payer, myUnpaidTotal, myUnpaidBillIds);
+            openPaymentModal(payer, getUnpaidPortionsForPayer(payer.lineId));
           });
         }
 
@@ -685,12 +742,12 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="bill-title-container">
             <span class="bill-title">${bill.name}</span>
-            <span class="bill-payer-label">Paid by ${bill.payerId.displayName}</span>
+            <span class="bill-payer-label">${TT('bill.paidBy', { name: bill.payerId.displayName })}</span>
           </div>
         </div>
         <div class="bill-card-right">
           <span class="bill-amount">${fmt(bill.totalAmount)} THB</span>
-          <span class="badge ${badgeClass}">${bill.status}</span>
+          <span class="badge ${badgeClass}">${TT('status.' + bill.status)}</span>
         </div>
       </div>
       <div class="bill-card-details" id="bill-details-${bill._id}"><div class="bill-card-details-inner"></div></div>
@@ -715,7 +772,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dayCard.className = `day-group${isHistory ? ' day-group-history' : ''}`;
 
     const dateOptions = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
-    const dateLabel = new Date(dayInfo.date).toLocaleDateString('en-US', dateOptions);
+    const dateLabel = new Date(dayInfo.date).toLocaleDateString(currentLang === 'th' ? 'th-TH' : 'en-US', dateOptions);
 
     // Recompute totals & payer strings from the bills actually shown
     let total = 0;
@@ -732,10 +789,10 @@ document.addEventListener('DOMContentLoaded', () => {
       (n, b) => n + (b.payees?.filter(p => p.slipKey).length || 0), 0
     );
     const remindBtnHTML = (!isHistory && currentGroup?.isLineGroup)
-      ? `<button class="btn btn-small btn-remind-day" data-date="${dayInfo.date}" title="Send reminder to LINE group">📢 Remind</button>`
+      ? `<button class="btn btn-small btn-remind-day" data-date="${dayInfo.date}" title="${TT('bill.remindTitle')}">${TT('bill.remind')}</button>`
       : '';
     const cancelDayBtnHTML = (!isHistory && hasUnpaidBills)
-      ? `<button class="btn btn-small btn-danger-outline btn-cancel-day" data-date="${dayInfo.date}">Cancel All</button>`
+      ? `<button class="btn btn-small btn-danger-outline btn-cancel-day" data-date="${dayInfo.date}">${TT('bill.cancelAll')}</button>`
       : '';
     const slipsBtnHTML = slipCount > 0
       ? `<button class="btn btn-small btn-view-day-slips">📎 Slips (${slipCount})</button>`
@@ -771,7 +828,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (remindBtn) {
       remindBtn.addEventListener('click', async () => {
         remindBtn.disabled = true;
-        remindBtn.textContent = 'Sending...';
+        remindBtn.textContent = TT('status.sending');
         try {
           const res = await fetch(`/api/groups/${currentGroupId}/remind-day`, {
             method: 'POST',
@@ -780,17 +837,17 @@ document.addEventListener('DOMContentLoaded', () => {
           });
           const data = await res.json();
           if (!res.ok) {
-            alert(`Error: ${data.error}`);
+            alert(`${TT('common.error')}: ${data.error}`);
           } else if (!data.sent) {
-            alert('ทุกคนจ่ายครบแล้วเมี้ยว ไม่มีอะไรต้องตาม~ 🐾');
+            alert(TT('alert.allPaid'));
           } else {
-            remindBtn.textContent = 'Sent! ✅';
+            remindBtn.textContent = TT('status.sent');
             setTimeout(() => { remindBtn.textContent = '📢 Remind'; remindBtn.disabled = false; }, 2000);
             return;
           }
         } catch (err) {
           console.error(err);
-          alert('Failed to send reminder.');
+          alert(TT('alert.remindFail'));
         }
         remindBtn.textContent = '📢 Remind';
         remindBtn.disabled = false;
@@ -801,9 +858,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelDayBtn = dayCard.querySelector('.btn-cancel-day');
     if (cancelDayBtn) {
       cancelDayBtn.addEventListener('click', async () => {
-        if (!confirm(`Cancel ALL unpaid bills on ${dateLabel}? This cannot be undone.`)) return;
+        if (!confirm(TT('confirm.cancelDay', { date: dateLabel }))) return;
         cancelDayBtn.disabled = true;
-        cancelDayBtn.textContent = 'Cancelling...';
+        cancelDayBtn.textContent = TT('status.cancelling');
         try {
           const res = await fetch(`/api/groups/${currentGroupId}/bills/cancel-day`, {
             method: 'POST',
@@ -811,12 +868,12 @@ document.addEventListener('DOMContentLoaded', () => {
             body: JSON.stringify({ date: dayInfo.date })
           });
           if (res.ok) await refreshAllData();
-          else alert('Failed to cancel bills.');
+          else alert(TT('alert.cancelBillsFail'));
         } catch (err) {
           console.error(err);
-          alert('Error cancelling bills.');
+          alert(TT('alert.cancelBillsError'));
           cancelDayBtn.disabled = false;
-          cancelDayBtn.textContent = 'Cancel All';
+          cancelDayBtn.textContent = TT('bill.cancelAll');
         }
       });
     }
@@ -865,7 +922,7 @@ document.addEventListener('DOMContentLoaded', () => {
         historySection.className = 'history-section';
         historySection.innerHTML = `
           <button class="history-toggle" id="history-toggle" type="button">
-            <span>🗂️ History (${totalHistory})</span>
+            <span>${TT('history.title', { n: totalHistory })}</span>
             <span class="history-chevron">▾</span>
           </button>
           <div class="history-body" id="history-body"><div class="history-body-inner"></div></div>
@@ -884,7 +941,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     } catch (err) {
       console.error(err);
-      dailyBillsList.innerHTML = '<div class="chat-system-msg">Error loading bills list.</div>';
+      dailyBillsList.innerHTML = `<div class="chat-system-msg">${TT('bills.error')}</div>`;
     }
   };
 
@@ -896,7 +953,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (bill.splitMethod === 'manual' && bill.items?.length > 0) {
       const itemsSec = document.createElement('div');
       itemsSec.className = 'details-items-list';
-      itemsSec.innerHTML = '<div class="details-section-title">Itemized Split Details</div>';
+      itemsSec.innerHTML = `<div class="details-section-title">${TT('bill.itemizedDetails')}</div>`;
       
       bill.items.forEach(item => {
         // Find member display names sharing this item
@@ -910,7 +967,7 @@ document.addEventListener('DOMContentLoaded', () => {
         itemRow.innerHTML = `
           <div>
             <span>${item.name}</span>
-            <div class="details-item-payees">Split by: ${payeesNames}</div>
+            <div class="details-item-payees">${TT('bill.splitBy', { names: payeesNames })}</div>
           </div>
           <span>${fmt(item.price)} THB</span>
         `;
@@ -944,7 +1001,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. Display Payees settlement list
     const payeesSec = document.createElement('div');
     payeesSec.className = 'details-payees-list';
-    payeesSec.innerHTML = '<div class="details-section-title">Split Breakdown &amp; Status</div>';
+    payeesSec.innerHTML = `<div class="details-section-title">${TT('bill.splitBreakdown')}</div>`;
 
     bill.payees.forEach(payee => {
       const payeeRow = document.createElement('div');
@@ -959,13 +1016,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isUnpaid && !payeeIsPayer) {
         if (isActiveUserPayee) {
           // It's my own share — pay it
-          actionBtn = `<button class="btn btn-secondary btn-small btn-pay-payee" data-amount="${payee.amount}" data-payee="${payee.payeeId.lineId}">Pay</button>`;
+          actionBtn = `<button class="btn btn-secondary btn-small btn-pay-payee" data-amount="${payee.amount}" data-payee="${payee.payeeId.lineId}">${TT('pay.pay')}</button>`;
         } else if (isActiveUserPayer) {
           // I'm the payer and received cash from this friend — settle manually
-          actionBtn = `<button class="btn btn-secondary btn-small btn-settle-payee" data-user-id="${payee.payeeId.lineId}">Mark Paid</button>`;
+          actionBtn = `<button class="btn btn-secondary btn-small btn-settle-payee" data-user-id="${payee.payeeId.lineId}">${TT('pay.markPaid')}</button>`;
         } else {
           // Pay on behalf of a friend (row already shows whose share it is)
-          actionBtn = `<button class="btn btn-secondary btn-small btn-pay-payee" data-amount="${payee.amount}" data-payee="${payee.payeeId.lineId}" title="Pay for ${payee.payeeId.displayName}">Pay</button>`;
+          actionBtn = `<button class="btn btn-secondary btn-small btn-pay-payee" data-amount="${payee.amount}" data-payee="${payee.payeeId.lineId}" title="Pay for ${payee.payeeId.displayName}">${TT('pay.pay')}</button>`;
         }
       }
 
@@ -976,11 +1033,11 @@ document.addEventListener('DOMContentLoaded', () => {
       payeeRow.innerHTML = `
         <div class="details-payee-user">
           <img src="${payee.payeeId.pictureUrl}" alt="${payee.payeeId.displayName}">
-          <span>${payee.payeeId.displayName}${isActiveUserPayee ? ' <span class="me-tag">(you)</span>' : ''}</span>
+          <span>${payee.payeeId.displayName}${isActiveUserPayee ? ` <span class="me-tag">${TT('tag.you')}</span>` : ''}</span>
         </div>
         <div class="details-payee-status">
           <span>${fmt(payee.amount)} THB</span>
-          <span class="badge ${payee.status}">${payee.status}</span>
+          <span class="badge ${payee.status}">${TT('status.' + payee.status)}</span>
           ${slipBtn}
           ${actionBtn}
         </div>
@@ -998,11 +1055,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Bind events for payee click triggers
     container.querySelectorAll('.btn-pay-payee').forEach(btn => {
       btn.addEventListener('click', () => {
+        const payeeLineId = btn.getAttribute('data-payee');
         openPaymentModal(
           bill.payerId,
-          parseFloat(btn.getAttribute('data-amount')),
-          [bill._id],
-          btn.getAttribute('data-payee')
+          getUnpaidPortionsForPayer(bill.payerId.lineId),
+          [portionKey({ billId: bill._id, payeeLineId })]
         );
       });
     });
@@ -1010,7 +1067,7 @@ document.addEventListener('DOMContentLoaded', () => {
     container.querySelectorAll('.btn-settle-payee').forEach(btn => {
       btn.addEventListener('click', async () => {
         const friendLineId = btn.getAttribute('data-user-id');
-        if (confirm(`Confirm you received payment from this friend?`)) {
+        if (confirm(TT('confirm.markPaid'))) {
           await markPortionAsPaid(bill._id, friendLineId);
         }
       });
@@ -1034,7 +1091,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       document.getElementById(`btn-cancel-${bill._id}`).addEventListener('click', async () => {
-        if (confirm(`Are you sure you want to cancel the bill "${bill.name}"? This cannot be undone.`)) {
+        if (confirm(TT('confirm.cancelBill', { name: bill.name }))) {
           await cancelBill(bill._id);
         }
       });
@@ -1052,12 +1109,12 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ payeeLineId })
       });
       if (res.ok) {
-        alert("Payment registered successfully.");
+        alert(TT('alert.paymentRegistered'));
         await refreshAllData();
       }
     } catch (err) {
       console.error(err);
-      alert("Error processing payment.");
+      alert(TT('alert.paymentError'));
     }
   };
 
@@ -1065,12 +1122,12 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(`/api/bills/${billId}/cancel`, { method: 'POST' });
       if (res.ok) {
-        alert("Bill cancelled successfully.");
+        alert(TT('alert.billCancelled'));
         await refreshAllData();
       }
     } catch (err) {
       console.error(err);
-      alert("Error cancelling bill.");
+      alert(TT('alert.billCancelError'));
     }
   };
 
@@ -1156,8 +1213,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     updateTaxesSummary();
-    document.querySelector('#create-bill-dialog .dialog-header h2').textContent = 'Edit Bill';
-    document.getElementById('btn-save-bill').textContent = 'Save Changes';
+    document.querySelector('#create-bill-dialog .dialog-header h2').textContent = TT('bill.edit.title');
+    document.getElementById('btn-save-bill').textContent = TT('bill.saveChanges');
     createBillDialog.showModal();
   };
 
@@ -1288,12 +1345,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       itemRow.innerHTML = `
         <div class="item-main-row">
-          <input type="text" class="item-name-input" value="${item.name}" placeholder="Item ${idx+1} name">
-          <input type="number" class="item-price-input" value="${item.price || ''}" step="0.01" min="0.01" placeholder="Price">
+          <input type="text" class="item-name-input" value="${item.name}" placeholder="${TT('bill.itemNamePh', { n: idx+1 })}">
+          <input type="number" class="item-price-input" value="${item.price || ''}" step="0.01" min="0.01" placeholder="${TT('bill.pricePh')}">
           <button type="button" class="btn-remove-item" ${manualItems.length === 1 ? 'disabled' : ''}>&times;</button>
         </div>
         <div class="item-payee-selector">
-          <span class="item-payee-selector-title">Share among:</span>
+          <span class="item-payee-selector-title">${TT('bill.shareAmong')}</span>
           <div class="item-payee-checkboxes">
             ${checkboxesHTML}
           </div>
@@ -1391,8 +1448,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const resetCreateBillDialog = () => {
     editingBillId = null;
-    document.querySelector('#create-bill-dialog .dialog-header h2').textContent = 'Create New Bill';
-    document.getElementById('btn-save-bill').textContent = 'Save Bill';
+    document.querySelector('#create-bill-dialog .dialog-header h2').textContent = TT('bill.create.title');
+    document.getElementById('btn-save-bill').textContent = TT('bill.save');
     renderEqualSplitChecklist();
     manualItems = [];
     addManualItem();
@@ -1437,7 +1494,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // friends have no way to settle the bill through the app.
     const payerMember = groupMembers.find(m => m.lineId === payerLineId);
     if (!payerMember?.promptPay) {
-      alert(`${payerMember?.displayName || 'The selected payer'} has not set up PromptPay yet. They need to add it (⚙️ Setup PromptPay) before being set as the payer.`);
+      alert(TT('alert.payerNoPromptPay', { name: payerMember?.displayName || 'The selected payer' }));
       return;
     }
 
@@ -1462,7 +1519,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const checkedPayees = Array.from(payeeListEqual.querySelectorAll('input:checked')).map(cb => cb.value);
       
       if (checkedPayees.length === 0) {
-        alert("Please select at least one payee to split equally.");
+        alert(TT('alert.selectPayee'));
         return;
       }
 
@@ -1478,12 +1535,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const hasInvalidItem = itemsPayload.some(item => !item.name || item.price <= 0);
       if (hasInvalidItem) {
-        alert("Every item must have a name and a price greater than 0.");
+        alert(TT('alert.itemNamePrice'));
         return;
       }
       const hasEmptyPayees = itemsPayload.some(item => item.payeeLineIds.length === 0);
       if (hasEmptyPayees) {
-        alert("Every item must have at least one payee checked.");
+        alert(TT('alert.itemPayee'));
         return;
       }
 
@@ -1504,65 +1561,100 @@ document.addEventListener('DOMContentLoaded', () => {
         await refreshAllData();
       } else {
         const err = await res.json();
-        alert(`Error: ${err.error}`);
+        alert(`${TT('common.error')}: ${err.error}`);
       }
     } catch (err) {
       console.error(err);
-      alert(editingBillId ? "Error updating bill." : "Error creating bill.");
+      alert(editingBillId ? TT('alert.billUpdateError') : TT('alert.billCreateError'));
     }
   });
 
   // ----------------------------------------------------
   // Payment Modal logic & PromptPay QR rendering
   // ----------------------------------------------------
-  // billIds is an array; pass [] to show modal without confirm button.
-  // payeeLineId is who the payment settles for (defaults to the active user).
-  const openPaymentModal = (payer, amount, billIds = [], payeeLineId = currentUser.userId) => {
-    activePaymentContext = { payer, amount, billIds, payeeLineId };
-    
+  // Render the per-payer portion checklist (only when there's a real choice: >1 portion).
+  const renderPortionChecklist = () => {
+    if (!settlePortionsEl) return;
+    if (activePortions.length <= 1) { settlePortionsEl.hidden = true; settlePortionsEl.innerHTML = ''; return; }
+    const selSet = new Set(activeSelectedKeys);
+    settlePortionsEl.hidden = false;
+    settlePortionsEl.innerHTML = `<div class="settle-portions-title">${TT('pay.selectPortions')}</div>` +
+      activePortions.map(p => {
+        const key = portionKey(p);
+        const isMe = p.payeeLineId === currentUser.userId;
+        return `<label class="settle-portion-row">
+          <input type="checkbox" class="settle-portion-chk" data-key="${key}" ${selSet.has(key) ? 'checked' : ''}>
+          <span class="settle-portion-name">${p.payeeName}${isMe ? ` <span class="me-tag">${TT('tag.you')}</span>` : ''} · ${p.billName}</span>
+          <span class="settle-portion-amt">${fmt(p.amount)}</span>
+        </label>`;
+      }).join('');
+    settlePortionsEl.querySelectorAll('.settle-portion-chk').forEach(chk => {
+      chk.addEventListener('change', () => {
+        const key = chk.getAttribute('data-key');
+        if (chk.checked) { if (!activeSelectedKeys.includes(key)) activeSelectedKeys.push(key); }
+        else activeSelectedKeys = activeSelectedKeys.filter(k => k !== key);
+        renderSettleState();
+      });
+    });
+  };
+
+  // Slip required (feature 9): confirm enabled only with a selection + a slip (when QR flow).
+  const updateConfirmGate = () => {
+    const payer = activePaymentContext?.payer;
+    if (!payer) return;
+    const hasSel = activeSelectedKeys.length > 0;
+    btnConfirmPayment.disabled = !hasSel || !canConfirmPayment({ hasPromptPay: !!payer.promptPay, hasSlip: !!pendingSlipFile });
+  };
+
+  // Recompute total, QR, "paying for …" line and the confirm gate from the current selection.
+  const renderSettleState = () => {
+    const payer = activePaymentContext?.payer;
+    if (!payer) return;
+    const total = selectedTotal(activePortions, activeSelectedKeys);
+    payAmountDisplay.textContent = `${fmt(total)} THB`;
+    const others = payingForNames(activePortions, activeSelectedKeys, currentUser.userId);
+    if (payForLine) {
+      if (others.length) { payForLine.textContent = TT('pay.payingFor', { names: others.join(', ') }); payForLine.hidden = false; }
+      else payForLine.hidden = true;
+    }
+    if (payer.promptPay && total > 0) {
+      const qrPayload = generatePromptPayQR(payer.promptPay, total);
+      if (qrPayload) drawQRCode(qrPayload, 'qr-canvas');
+    }
+    updateConfirmGate();
+  };
+
+  // portions: that payer's unpaid (bill × payee) portions. preselectKeys: optional pre-checked keys.
+  const openPaymentModal = (payer, portions = [], preselectKeys = null) => {
+    activePaymentContext = { payer };
+    activePortions = portions;
+    activeSelectedKeys = (preselectKeys && preselectKeys.length)
+      ? preselectKeys.slice()
+      : defaultSelectedKeys(portions, currentUser.userId);
+    if (activeSelectedKeys.length === 0) activeSelectedKeys = portions.map(portionKey);
+
     payPayerPic.src = payer.pictureUrl;
     payPayerName.textContent = payer.displayName;
-    payAmountDisplay.textContent = `${fmt(amount)} THB`;
 
     if (!payer.promptPay) {
-      // If payer has not configured payment info
-      payPpNumber.textContent = 'Not configured ⚠️';
+      payPpNumber.textContent = TT('pay.notConfigured') + ' ⚠️';
       payPpNumber.classList.add('negative');
       btnCopyPp.disabled = true;
       payQrContainer.style.display = 'none';
     } else {
-      // PromptPay configured!
       payPpNumber.textContent = formatPromptPayNumber(payer.promptPay);
       payPpNumber.classList.remove('negative');
       btnCopyPp.disabled = false;
       payQrContainer.style.display = 'flex';
-      
-      // Generate dynamically the EMVCo QR Code payload
-      const qrPayload = generatePromptPayQR(payer.promptPay, amount);
-      if (qrPayload) {
-        drawQRCode(qrPayload, 'qr-canvas');
-      } else {
-        console.error("Failed to generate PromptPay payload");
-        payQrContainer.style.display = 'none';
-      }
-
     }
 
-    // Reset slip upload state
     resetSlipUpload();
+    btnConfirmPayment.style.display = 'block';
+    btnConfirmPayment.title = payer.promptPay ? '' : `${payer.displayName} has not set up PromptPay yet`;
+    slipUploadSection.style.display = payer.promptPay ? 'block' : 'none';
 
-    // Show confirm button + slip upload only when there are bills to mark paid AND payer has PromptPay
-    if (billIds.length > 0) {
-      btnConfirmPayment.style.display = 'block';
-      btnConfirmPayment.disabled = !payer.promptPay;
-      btnConfirmPayment.title = payer.promptPay ? '' : `${payer.displayName} has not set up PromptPay yet`;
-      slipUploadSection.style.display = payer.promptPay ? 'block' : 'none';
-    } else {
-      btnConfirmPayment.style.display = 'none';
-      btnConfirmPayment.disabled = false;
-      slipUploadSection.style.display = 'none';
-    }
-
+    renderPortionChecklist();
+    renderSettleState();
     paymentDialog.showModal();
   };
 
@@ -1574,7 +1666,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (slipFileInput) slipFileInput.value = '';
     if (slipPreviewWrap) slipPreviewWrap.hidden = true;
     if (slipPreview) slipPreview.src = '';
-    if (slipUploadText) slipUploadText.textContent = 'Attach payment slip (optional)';
+    if (slipUploadText) slipUploadText.textContent = TT('pay.attachSlip');
+    if (activePaymentContext) updateConfirmGate();
   }
 
   // Trigger the (body-level) file input from the button inside the dialog.
@@ -1586,12 +1679,13 @@ document.addEventListener('DOMContentLoaded', () => {
     slipFileInput.addEventListener('change', () => {
       const file = slipFileInput.files?.[0];
       if (!file) { resetSlipUpload(); return; }
-      if (!file.type.startsWith('image/')) { alert('Please select an image file.'); resetSlipUpload(); return; }
-      if (file.size > 8 * 1024 * 1024) { alert('Image too large (max 8MB).'); resetSlipUpload(); return; }
+      if (!file.type.startsWith('image/')) { alert(TT('alert.imageOnly')); resetSlipUpload(); return; }
+      if (file.size > 8 * 1024 * 1024) { alert(TT('alert.imageTooLarge')); resetSlipUpload(); return; }
       pendingSlipFile = file;
       slipPreview.src = URL.createObjectURL(file);
       slipPreviewWrap.hidden = false;
-      slipUploadText.textContent = 'Change slip';
+      slipUploadText.textContent = TT('pay.slipAttached');
+      updateConfirmGate();
     });
   }
   if (slipRemoveBtn) slipRemoveBtn.addEventListener('click', resetSlipUpload);
@@ -1622,7 +1716,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---- Day slips gallery ----
   const openDaySlipsGallery = (dayInfo, dateLabel) => {
-    slipsGalleryTitle.textContent = `Slips · ${dateLabel}`;
+    slipsGalleryTitle.textContent = TT('slips.titleDate', { date: dateLabel });
     slipsGalleryGrid.innerHTML = '';
 
     const entries = [];
@@ -1641,7 +1735,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     if (entries.length === 0) {
-      slipsGalleryGrid.innerHTML = '<div class="chat-system-msg">No slips uploaded for this day.</div>';
+      slipsGalleryGrid.innerHTML = `<div class="chat-system-msg">${TT('slips.empty')}</div>`;
     } else {
       entries.forEach(e => {
         const card = document.createElement('div');
@@ -1686,7 +1780,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Handle clipboard copies
   btnCopyPp.addEventListener('click', () => {
     if (activePaymentContext?.payer?.promptPay) {
-      copyToClipboard(activePaymentContext.payer.promptPay, btnCopyPp, 'Copied! ✅', 'Copy Number');
+      copyToClipboard(activePaymentContext.payer.promptPay, btnCopyPp, TT('common.copied'), TT('pay.copyNumber'));
     }
   });
 
@@ -1705,7 +1799,7 @@ document.addEventListener('DOMContentLoaded', () => {
       qrSaveOverlay.hidden = false;
     } else {
       const link = document.createElement('a');
-      link.download = `PromptPay_ThungNgoen_${activePaymentContext?.amount.toFixed(2)}.png`;
+      link.download = `PromptPay_ThungNgoen_${selectedTotal(activePortions, activeSelectedKeys).toFixed(2)}.png`;
       link.href = dataUrl;
       link.click();
     }
@@ -1713,35 +1807,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Settlement Confirm Payment — handles single or multiple bills at once
   btnConfirmPayment.addEventListener('click', async () => {
-    const ctx = activePaymentContext;
-    if (!ctx || ctx.billIds.length === 0) return;
+    const payer = activePaymentContext?.payer;
+    const selections = selectionsFor(activePortions, activeSelectedKeys);
+    if (!payer || selections.length === 0) return;
+
+    // Feature 9: a slip is required before confirming a QR payment.
+    if (!canConfirmPayment({ hasPromptPay: !!payer.promptPay, hasSlip: !!pendingSlipFile })) {
+      alert(TT('pay.slipRequired'));
+      return;
+    }
 
     btnConfirmPayment.disabled = true;
-    btnConfirmPayment.textContent = 'Processing...';
+    btnConfirmPayment.textContent = TT('common.loading');
 
     try {
-      // Upload the slip once and attach the same key to each settled bill
+      // Upload the slip once and attach the same key to every settled portion
       let slipKey = null;
       try {
         slipKey = await uploadPendingSlip();
       } catch (err) {
         console.error(err);
-        alert('Could not upload the slip. Please try again.');
+        alert(TT('alert.slipUploadFail'));
         return;
       }
 
-      for (const billId of ctx.billIds) {
-        await fetch(`/api/bills/${billId}/pay`, {
+      for (const sel of selections) {
+        await fetch(`/api/bills/${sel.billId}/pay`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payeeLineId: ctx.payeeLineId || currentUser.userId, slipKey })
+          body: JSON.stringify({ payeeLineId: sel.payeeLineId, slipKey })
         });
       }
       paymentDialog.close();
       await refreshAllData();
     } finally {
       btnConfirmPayment.disabled = false;
-      btnConfirmPayment.textContent = 'I have paid this amount';
+      btnConfirmPayment.textContent = TT('pay.confirm');
     }
   });
 
@@ -1753,7 +1854,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const promptPay = settingsPpInput.value.trim();
 
     if (promptPay.length !== 10 && promptPay.length !== 13) {
-      alert("Invalid PromptPay. Must be a 10-digit phone or 13-digit National ID.");
+      alert(TT('alert.invalidPromptPay'));
       return;
     }
 
@@ -1765,15 +1866,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (res.ok) {
-        alert("PromptPay payment info saved successfully.");
+        alert(TT('alert.settingsSaved'));
         settingsDialog.close();
         await refreshAllData();
       } else {
-        alert("Error saving settings.");
+        alert(TT('alert.settingsError'));
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to save settings.");
+      alert(TT('alert.settingsFail'));
     }
   });
 
@@ -1796,7 +1897,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ----------------------------------------------------
   const leaveGroup = async () => {
     const name = currentGroup?.name || 'this group';
-    if (!confirm(`Leave "${name}"?\n\nYou will be removed from the group. You can rejoin via invite link.`)) return;
+    if (!confirm(TT('confirm.leave', { name }))) return;
     try {
       const res = await fetch(`/api/groups/${currentGroupId}/leave`, {
         method: 'POST',
@@ -1807,18 +1908,18 @@ document.addEventListener('DOMContentLoaded', () => {
         await openHome();
       } else {
         const d = await res.json();
-        alert(`Error: ${d.error}`);
+        alert(`${TT('common.error')}: ${d.error}`);
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to leave group.');
+      alert(TT('alert.leaveFail'));
     }
   };
 
   const deleteGroup = async () => {
     const name = currentGroup?.name || 'this group';
-    if (!confirm(`Delete "${name}"?\n\nThis will permanently delete the group AND all bills. This cannot be undone.`)) return;
-    if (!confirm(`Are you absolutely sure you want to delete "${name}"?`)) return;
+    if (!confirm(TT('confirm.delete', { name }))) return;
+    if (!confirm(TT('confirm.deleteConfirm', { name }))) return;
     try {
       const res = await fetch(`/api/groups/${currentGroupId}`, {
         method: 'DELETE',
@@ -1829,11 +1930,11 @@ document.addEventListener('DOMContentLoaded', () => {
         await openHome();
       } else {
         const d = await res.json();
-        alert(`Error: ${d.error}`);
+        alert(`${TT('common.error')}: ${d.error}`);
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to delete group.');
+      alert(TT('alert.deleteFail'));
     }
   };
 

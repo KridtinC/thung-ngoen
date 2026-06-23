@@ -20,12 +20,13 @@ slips. It runs as a single Bun/Elysia server with a no-framework HTML/CSS/JS fro
 - **Two split modes** — divide equally among selected payees, or itemise (per-item prices +
   per-item payees). Proportional **discount / service charge / VAT** handling.
 - **Dynamic PromptPay QR** — EMVCo payload generated client-side with the exact amount.
-- **Pay for a friend** — settle someone else's share on their behalf.
+- **Multi-select settle** — pay several unpaid portions owed to one payer at once (yourself +
+  friends, across bills) with a running total + a single QR; a required slip before confirming.
 - **Payment slips** — upload a slip image (stored in Cloudflare R2); view per-bill or a per-day
   gallery.
 - **Reminders** — push a Flex reminder to the group; an 08:00 (Bangkok) daily cron nudges unpaid bills.
-- **Edit / cancel bills**, leave/delete groups, invite via share link.
-- **Light & dark themes** with a toggle (light is default, matching the cat brand).
+- **Edit / cancel bills**; manual groups can invite/leave/delete (LINE-synced groups are managed by LINE).
+- **Thai / English** UI with a 🌐 toggle (auto-detects locale), and **light & dark** themes.
 
 ---
 
