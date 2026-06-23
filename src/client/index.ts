@@ -1572,22 +1572,58 @@ document.addEventListener('DOMContentLoaded', () => {
   // ----------------------------------------------------
   // Payment Modal logic & PromptPay QR rendering
   // ----------------------------------------------------
-  // Render the per-payer portion checklist (only when there's a real choice: >1 portion).
+  // Render the per-payer portion checklist.
+  // Own portions are locked (always selected); others are collapsed in a toggle section.
   const renderPortionChecklist = () => {
     if (!settlePortionsEl) return;
-    if (activePortions.length <= 1) { settlePortionsEl.hidden = true; settlePortionsEl.innerHTML = ''; return; }
+    if (activePortions.length === 0) { settlePortionsEl.hidden = true; settlePortionsEl.innerHTML = ''; return; }
+
+    const ownPortions = activePortions.filter(p => p.payeeLineId === currentUser.userId);
+    const otherPortions = activePortions.filter(p => p.payeeLineId !== currentUser.userId);
+
+    // Own portions are always paid — keep them in selection but don't show them
+    for (const p of ownPortions) {
+      const key = portionKey(p);
+      if (!activeSelectedKeys.includes(key)) activeSelectedKeys.push(key);
+    }
+
+    if (otherPortions.length === 0) {
+      settlePortionsEl.hidden = true;
+      settlePortionsEl.innerHTML = '';
+      return;
+    }
+
     const selSet = new Set(activeSelectedKeys);
+    const othersPreSelected = otherPortions.some(p => selSet.has(portionKey(p)));
+    const othersHTML = `
+      <button type="button" class="settle-pay-others-toggle" id="settle-pay-others-toggle">
+        <span>${TT('pay.payForOthers')}</span>
+        <span class="toggle-caret">${othersPreSelected ? '▲' : '▼'}</span>
+      </button>
+      <div class="settle-pay-others-list" id="settle-pay-others-list" ${othersPreSelected ? '' : 'hidden'}>
+        ${otherPortions.map(p => {
+          const key = portionKey(p);
+          return `<label class="settle-portion-row">
+            <input type="checkbox" class="settle-portion-chk" data-key="${key}" ${selSet.has(key) ? 'checked' : ''}>
+            <span class="settle-portion-name">${p.payeeName} · ${p.billName}</span>
+            <span class="settle-portion-amt">${fmt(p.amount)}</span>
+          </label>`;
+        }).join('')}
+      </div>`;
+
     settlePortionsEl.hidden = false;
-    settlePortionsEl.innerHTML = `<div class="settle-portions-title">${TT('pay.selectPortions')}</div>` +
-      activePortions.map(p => {
-        const key = portionKey(p);
-        const isMe = p.payeeLineId === currentUser.userId;
-        return `<label class="settle-portion-row">
-          <input type="checkbox" class="settle-portion-chk" data-key="${key}" ${selSet.has(key) ? 'checked' : ''}>
-          <span class="settle-portion-name">${p.payeeName}${isMe ? ` <span class="me-tag">${TT('tag.you')}</span>` : ''} · ${p.billName}</span>
-          <span class="settle-portion-amt">${fmt(p.amount)}</span>
-        </label>`;
-      }).join('');
+    settlePortionsEl.innerHTML = othersHTML;
+
+    const toggleBtn = settlePortionsEl.querySelector('#settle-pay-others-toggle');
+    const othersList = settlePortionsEl.querySelector('#settle-pay-others-list');
+    if (toggleBtn && othersList) {
+      toggleBtn.addEventListener('click', () => {
+        const opening = othersList.hidden;
+        othersList.hidden = !opening;
+        toggleBtn.querySelector('.toggle-caret').textContent = opening ? '▲' : '▼';
+      });
+    }
+
     settlePortionsEl.querySelectorAll('.settle-portion-chk').forEach(chk => {
       chk.addEventListener('change', () => {
         const key = chk.getAttribute('data-key');
@@ -1624,14 +1660,14 @@ document.addEventListener('DOMContentLoaded', () => {
     updateConfirmGate();
   };
 
-  // portions: that payer's unpaid (bill × payee) portions. preselectKeys: optional pre-checked keys.
+  // portions: that payer's unpaid (bill × payee) portions. preselectKeys: extra pre-checked others.
   const openPaymentModal = (payer, portions = [], preselectKeys = null) => {
     activePaymentContext = { payer };
     activePortions = portions;
-    activeSelectedKeys = (preselectKeys && preselectKeys.length)
-      ? preselectKeys.slice()
-      : defaultSelectedKeys(portions, currentUser.userId);
-    if (activeSelectedKeys.length === 0) activeSelectedKeys = portions.map(portionKey);
+    // Own portions are always required; start others unchecked unless preselectKeys says otherwise
+    const ownKeys = portions.filter(p => p.payeeLineId === currentUser.userId).map(portionKey);
+    const extraKeys = (preselectKeys || []).filter(k => !ownKeys.includes(k));
+    activeSelectedKeys = [...ownKeys, ...extraKeys];
 
     payPayerPic.src = payer.pictureUrl;
     payPayerName.textContent = payer.displayName;

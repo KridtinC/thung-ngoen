@@ -2,6 +2,12 @@
 
 Versioning: **major.minor.bugfix** (major = redesign/rebrand, minor = new feature, bugfix = fix).
 
+## 1.3.6 — pay for others: hidden own portions, collapsible others toggle
+- **Bug fix**: reopening the payment dialog no longer resets the total — own portions are always silently included so the amount stays correct across open/close cycles.
+- **UX**: your own bill portions are no longer shown in the checklist (you always pay your share); the checklist is hidden entirely if there are no other payees to cover.
+- **UX**: other people's portions are hidden by default under a "Pay for others ▼" collapsible toggle — expand to optionally pay on their behalf.
+- Cache-bust `styles.css?v=33`, `app.js?v=28`.
+
 ## 1.3.5 — disable confirm button; fix QR save cache bust
 - **Disable button**: `.btn:disabled` now renders at 40% opacity with `cursor: not-allowed` — the
   "I have paid this amount" button is visually disabled when no payees are selected or when a slip
