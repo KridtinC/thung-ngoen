@@ -1,4 +1,6 @@
 import { Bill, BillPayee, IUser } from '../../../../db';
+import { fmt } from '../../../../lib/money';
+import { buildInviteUrl } from '../../../../lib/line-share';
 
 // ── LINE Messaging API helpers + reminder Flex builders (non-request-dependent) ──
 export abstract class LineService {
@@ -40,7 +42,7 @@ export abstract class LineService {
     inviteCode: string
   ): any {
     const dateLabel = LineService.formatDateThai(dateStr);
-    const liffUrl = `https://liff.line.me/${liffId}?invite=${inviteCode}`;
+    const liffUrl = buildInviteUrl(liffId, inviteCode);
 
     const uniquePeople = new Set<string>();
     let totalUnpaid = 0;
@@ -53,7 +55,7 @@ export abstract class LineService {
         type: 'box', layout: 'horizontal', margin: i === 0 ? 'none' : 'md',
         contents: [
           { type: 'text', text: bill.name, flex: 4, size: 'sm', weight: 'bold', color: '#333333', wrap: true },
-          { type: 'text', text: `฿${bill.totalAmount.toFixed(0)}`, flex: 2, size: 'sm', align: 'end', color: '#555555' }
+          { type: 'text', text: `฿${fmt(bill.totalAmount)}`, flex: 2, size: 'sm', align: 'end', color: '#555555' }
         ]
       });
       bodyContents.push({ type: 'text', text: `เรียกเก็บโดย ${bill.payer}`, size: 'xxs', color: '#999999', margin: 'xs' });
@@ -62,7 +64,7 @@ export abstract class LineService {
           type: 'box', layout: 'horizontal', margin: 'xs',
           contents: [
             { type: 'text', text: `❌ ${p.displayName}`, flex: 4, size: 'xs', color: '#E53935' },
-            { type: 'text', text: `${p.amount.toFixed(0)}`, flex: 2, size: 'xs', align: 'end', color: '#E53935', weight: 'bold' }
+            { type: 'text', text: `${fmt(p.amount)}`, flex: 2, size: 'xs', align: 'end', color: '#E53935', weight: 'bold' }
           ]
         });
       });
@@ -74,7 +76,7 @@ export abstract class LineService {
         type: 'box', layout: 'vertical', backgroundColor: '#129cb4', paddingAll: '20px',
         contents: [
           { type: 'text', text: `🐾 ${dateLabel}`, color: '#FFFFFF', size: 'xl', weight: 'bold' },
-          { type: 'text', text: `${uniquePeople.size} คนยังไม่จ่ายเมี้ยว • รวม ฿${totalUnpaid.toFixed(0)}`, color: '#FFFFFFCC', size: 'xs', margin: 'sm' }
+          { type: 'text', text: `${uniquePeople.size} คนยังไม่จ่ายเมี้ยว • รวม ฿${fmt(totalUnpaid)}`, color: '#FFFFFFCC', size: 'xs', margin: 'sm' }
         ]
       },
       body: { type: 'box', layout: 'vertical', paddingAll: '16px', contents: bodyContents },
