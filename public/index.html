@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=27">
+  <link rel="stylesheet" href="styles.css?v=28">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 </head>
 <body>
@@ -37,17 +37,17 @@
       <div class="header-top-bar">
         <img src="logo.png?v=1" alt="Thung Ngoen" class="brand-logo" id="brand-logo" onerror="this.style.display='none'">
         <button class="btn-back-home" id="btn-back-home" type="button" data-i18n="nav.back" hidden>← My Groups</button>
-        <div class="user-profile-badge" id="user-badge">
+        <button class="theme-toggle lang-toggle" id="lang-toggle" type="button" aria-label="Toggle language">EN</button>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">🌙</button>
+        <div class="user-profile-badge" id="user-badge" role="button" tabindex="0" aria-label="Settings">
           <div class="profile-pic-wrap">
             <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=placeholder" alt="Profile" class="profile-pic" id="liff-user-pic">
-            <button class="profile-gear" id="open-settings-btn" commandfor="settings-dialog" command="show-modal" type="button" aria-label="Settings">⚙️</button>
+            <span class="profile-gear" id="open-settings-btn" aria-hidden="true">⚙️</span>
           </div>
           <div class="user-meta">
             <span class="user-name" id="liff-user-name">Loading...</span>
           </div>
         </div>
-        <button class="theme-toggle lang-toggle" id="lang-toggle" type="button" aria-label="Toggle language">EN</button>
-        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">🌙</button>
       </div>
       <div class="header-group-row">
         <div class="group-info">
@@ -374,6 +374,6 @@
   </div>
 
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script src="app.js?v=25" type="module"></script>
+  <script src="app.js?v=26" type="module"></script>
 </body>
 </html>

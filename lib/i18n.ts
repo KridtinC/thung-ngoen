@@ -164,6 +164,10 @@ const en: Dict = {
   'bill.pricePh': 'Price',
   'bill.shareAmong': 'Share among:',
   'group.loadError': 'Error Loading Group',
+  'bill.dayTotal': 'Total: {amt} THB',
+  'bill.paidAmt': '{name}: paid {amt}',
+  'slips.day': '📎 Slips ({n})',
+  'slips.view': '📎 Slip',
 };
 
 const th: Dict = {
@@ -308,6 +312,10 @@ const th: Dict = {
   'bill.pricePh': 'ราคา',
   'bill.shareAmong': 'หารกับ:',
   'group.loadError': 'โหลดกลุ่มไม่สำเร็จ',
+  'bill.dayTotal': 'รวม: {amt} บาท',
+  'bill.paidAmt': '{name}: จ่าย {amt}',
+  'slips.day': '📎 สลิป ({n})',
+  'slips.view': '📎 สลิป',
 };
 
 const dict: Record<Lang, Dict> = { en, th };

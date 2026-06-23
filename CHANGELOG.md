@@ -2,6 +2,14 @@
 
 Versioning: **major.minor.bugfix** (major = redesign/rebrand, minor = new feature, bugfix = fix).
 
+## 1.3.1 — i18n/UX polish
+- Profile badge moved to the far right of the header; the **whole badge** opens settings
+  (the gear is now just an indicator), keyboard-accessible.
+- The summary/empty/loading info box now stretches full width instead of a centered pill.
+- Translated the last English bits: bills-list empty state, day "Total:" / "paid" payer line,
+  Slips/Slip buttons — and fixed the **Remind** button reverting the UI to English after tapping
+  (its label reset was hardcoded). Cache-bust `styles.css?v=28` / `app.js?v=26`.
+
 ## 1.3.0 — Thai/English + settle UX
 - **Thai/English UI** (`lib/i18n`): full bilingual copy via a `data-i18n` dictionary + a 🌐 header
   toggle (auto-detects LINE/browser locale, remembers your choice). Cat-voice flavour added to

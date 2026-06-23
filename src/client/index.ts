@@ -782,7 +782,7 @@ document.addEventListener('DOMContentLoaded', () => {
       total += b.totalAmount;
       payerMap.set(b.payerId.displayName, (payerMap.get(b.payerId.displayName) || 0) + b.totalAmount);
     });
-    const payerStrings = [...payerMap.entries()].map(([n, amt]) => `${n}: paid ${fmt(amt)}`).join(' · ');
+    const payerStrings = [...payerMap.entries()].map(([n, amt]) => `${TT('bill.paidAmt', { name: n, amt: fmt(amt) })}`).join(' · ');
 
     const hasUnpaidBills = dayInfo.bills.some(b => b.status === 'unpaid');
     const slipCount = dayInfo.bills.reduce(
@@ -795,14 +795,14 @@ document.addEventListener('DOMContentLoaded', () => {
       ? `<button class="btn btn-small btn-danger-outline btn-cancel-day" data-date="${dayInfo.date}">${TT('bill.cancelAll')}</button>`
       : '';
     const slipsBtnHTML = slipCount > 0
-      ? `<button class="btn btn-small btn-view-day-slips">📎 Slips (${slipCount})</button>`
+      ? `<button class="btn btn-small btn-view-day-slips">${TT('slips.day', { n: slipCount })}</button>`
       : '';
 
     dayCard.innerHTML = `
       <div class="day-header">
         <span class="day-header-left">${dateLabel}</span>
         <div class="day-header-right">
-          <span class="day-total-text">Total: ${fmt(total)} THB</span>
+          <span class="day-total-text">${TT('bill.dayTotal', { amt: fmt(total) })}</span>
           <span class="day-payers-list">${payerStrings}</span>
           <div class="day-header-actions">
             ${slipsBtnHTML}
@@ -842,14 +842,14 @@ document.addEventListener('DOMContentLoaded', () => {
             alert(TT('alert.allPaid'));
           } else {
             remindBtn.textContent = TT('status.sent');
-            setTimeout(() => { remindBtn.textContent = '📢 Remind'; remindBtn.disabled = false; }, 2000);
+            setTimeout(() => { remindBtn.textContent = TT('bill.remind'); remindBtn.disabled = false; }, 2000);
             return;
           }
         } catch (err) {
           console.error(err);
           alert(TT('alert.remindFail'));
         }
-        remindBtn.textContent = '📢 Remind';
+        remindBtn.textContent = TT('bill.remind');
         remindBtn.disabled = false;
       });
     }
@@ -894,7 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
       dailyBillsList.innerHTML = '';
 
       if (dailyGroups.length === 0) {
-        dailyBillsList.innerHTML = '<div class="chat-system-msg">🐾 No bills yet — tap + to add one!</div>';
+        dailyBillsList.innerHTML = `<div class="chat-system-msg">${TT('bills.empty')}</div>`;
         return;
       }
 
@@ -1027,7 +1027,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const slipBtn = payee.slipKey
-        ? `<button class="btn btn-secondary btn-small btn-view-slip" data-slip="${payee.slipKey}">📎 Slip</button>`
+        ? `<button class="btn btn-secondary btn-small btn-view-slip" data-slip="${payee.slipKey}">${TT('slips.view')}</button>`
         : '';
 
       payeeRow.innerHTML = `
@@ -1879,7 +1879,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Populate settings dialog whenever it's about to open
-  openSettingsBtn.addEventListener('click', async () => {
+  // The whole profile badge opens settings (not just the gear icon).
+  const openSettings = async () => {
     settingsNameInput.value = currentUser?.displayName || '';
     if (currentUser?.userId) {
       try {
@@ -1890,7 +1891,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } catch (_) {}
     }
-  });
+    settingsDialog.showModal();
+  };
+  const userBadge = document.getElementById('user-badge');
+  if (userBadge) {
+    userBadge.addEventListener('click', openSettings);
+    userBadge.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSettings(); }
+    });
+  }
 
   // ----------------------------------------------------
   // Leave / Delete Group
