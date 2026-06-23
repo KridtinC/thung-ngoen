@@ -2,6 +2,15 @@
 
 Versioning: **major.minor.bugfix** (major = redesign/rebrand, minor = new feature, bugfix = fix).
 
+## 1.3.7 — UI polish: remove redundant pay-for text, themed checkboxes & slip button, group list cleanup
+- **Removed** yellow "Paying for: …" text from the payment dialog header — redundant with the "Pay for others" checklist below.
+- **Checkboxes** in the pay-for-others checklist now use `accent-color: var(--color-primary)` to match the teal theme of the create-bill checkboxes.
+- **Slip upload button** now uses primary color dashed border and text (fixes the off-theme `--text-secondary` invalid variable that was falling back to browser default).
+- **Day slips button** (e.g. "📎 สลิป (3)") now uses `.btn-secondary` to match the rest of the UI.
+- **Removed** the 📋 copy-invite-link button from each group card in My Groups — redundant (the invite dialog already has copy + share).
+- **CLAUDE.md**: added rule to always follow existing visual language for new UI (correct btn variants, `accent-color`, CSS variables only).
+- Cache-bust `styles.css?v=34`, `app.js?v=29`.
+
 ## 1.3.6 — pay for others: hidden own portions, collapsible others toggle
 - **Bug fix**: reopening the payment dialog no longer resets the total — own portions are always silently included so the amount stays correct across open/close cycles.
 - **UX**: your own bill portions are no longer shown in the checklist (you always pay your share); the checklist is hidden entirely if there are no other payees to cover.
