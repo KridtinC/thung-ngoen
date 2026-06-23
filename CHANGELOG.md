@@ -2,6 +2,21 @@
 
 Versioning: **major.minor.bugfix** (major = redesign/rebrand, minor = new feature, bugfix = fix).
 
+## 1.3.0 — Thai/English + settle UX
+- **Thai/English UI** (`lib/i18n`): full bilingual copy via a `data-i18n` dictionary + a 🌐 header
+  toggle (auto-detects LINE/browser locale, remembers your choice). Cat-voice flavour added to
+  descriptions/empty-states; buttons, headers, numbers and dates stay literal.
+- **Per-payer multi-select settle**: tapping Pay opens a checklist of that payer's unpaid portions
+  (across bills & people, your own pre-checked) with a running total + QR; confirm settles them all
+  in one go. Shows "Paying for …" when covering friends.
+- **Slip required** before confirming a QR payment (`lib/pay-rules`).
+- **Settings gear** icon overlaid on the profile photo replaces the "Setup PromptPay" text button.
+- **LINE-group rules** (`lib/group-rules`): LINE-synced groups can't be invited to / left / deleted
+  (manual groups unchanged); enforced client-side + a server 403 guard.
+- **Summon Flex deep-links** to the caller's group (`?invite=`); reminder Flex prices now show
+  2 decimals.
+- Every feature ships with a `lib/` core + test (47→53 tests). New CLAUDE.md rule to keep it that way.
+
 ## 1.2.0 — Modular architecture + TypeScript client
 Internal refactor (no user-facing change) following the Elysia best-practice guide.
 - **Server**: split the 1,450-line `server.ts` into feature modules under

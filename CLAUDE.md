@@ -145,11 +145,15 @@ in the same PR.
 
 ## Testing
 - Test runner: **`bun test`** (`bun:test`). Tests live in `test/*.test.ts`.
+- **Every feature ships with a test.** Factor the feature's pure decision/format logic into
+  `lib/*.ts` and cover it with `test/*.test.ts`; DOM/LINE wiring stays a thin layer over the tested
+  core. A PR adding a feature without a test is incomplete. (e.g. i18n → `lib/i18n`, LINE-vs-manual
+  group rules → `lib/group-rules`, multi-select settle → `lib/settle-select`, slip gate → `lib/pay-rules`.)
 - **Pure, testable logic lives in `lib/*.ts`** (`crypto`, `settle`, `invite`, `bill`, `money`,
-  `promptpay`) — imported by the server modules, the client (`src/client`), and the tests. Keep new
-  pure logic there rather than inline in route handlers or DOM code, and add/extend tests for it
-  (calculations, formatting, crypto, parsing). DB-/DOM-/network-bound code isn't unit-tested —
-  factor the pure part out and test that.
+  `promptpay`, `i18n`, `group-rules`, `settle-select`, `pay-rules`, `line-share`) — imported by the
+  server modules, the client (`src/client`), and the tests. Keep new pure logic there rather than
+  inline in route handlers or DOM code. DB-/DOM-/network-bound code isn't unit-tested — factor the
+  pure part out and test that.
 - Don't import `server.ts`/`db.ts` from tests (import-time side effects: `db.ts` calls
   `process.exit(1)` without `MONGODB_URI`; `server.ts` connects + listens). Import from `lib/` instead.
 - **`bun run typecheck` (`tsc --noEmit`) is a CI gate** for the server modules + `lib/` + tests.
