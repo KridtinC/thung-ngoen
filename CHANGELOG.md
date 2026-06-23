@@ -2,6 +2,9 @@
 
 Versioning: **major.minor.bugfix** (major = redesign/rebrand, minor = new feature, bugfix = fix).
 
+## 1.3.3 — fix "paying for" text persisting when no others selected
+- **Bug fix**: "Paying for …" line stays hidden when selecting only yourself or no one — `.pay-for-line[hidden]` now overrides the `display:block` rule that was defeating the `hidden` attribute. Cache-bust `styles.css?v=30`.
+
 ## 1.3.2 — slip preview hidden-fix & delete button style
 - **Bug fix**: slip preview and remove button no longer ghost-show when no slip is attached — `.slip-preview-wrap[hidden]` now correctly overrides the `display:flex` rule.
 - **Style**: remove-slip button restyled to match "I have paid this amount" but solid red (`btn btn-danger btn-block`). Cache-bust `styles.css?v=29`.

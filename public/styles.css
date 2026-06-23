@@ -1754,6 +1754,9 @@ dialog[open] {
   color: var(--color-gold);
   margin-top: 2px;
 }
+.pay-for-line[hidden] {
+  display: none;
+}
 
 /* Multi-select settle checklist (features 4, 8) */
 .settle-portions {
