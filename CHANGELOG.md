@@ -2,6 +2,10 @@
 
 Versioning: **major.minor.bugfix** (major = redesign/rebrand, minor = new feature, bugfix = fix).
 
+## 1.3.2 — slip preview hidden-fix & delete button style
+- **Bug fix**: slip preview and remove button no longer ghost-show when no slip is attached — `.slip-preview-wrap[hidden]` now correctly overrides the `display:flex` rule.
+- **Style**: remove-slip button restyled to match "I have paid this amount" but solid red (`btn btn-danger btn-block`). Cache-bust `styles.css?v=29`.
+
 ## 1.3.1 — i18n/UX polish
 - Profile badge moved to the far right of the header; the **whole badge** opens settings
   (the gear is now just an indicator), keyboard-accessible.
