@@ -1581,23 +1581,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const ownPortions = activePortions.filter(p => p.payeeLineId === currentUser.userId);
     const otherPortions = activePortions.filter(p => p.payeeLineId !== currentUser.userId);
 
-    // Ensure own portions are always in the selection (they cannot be deselected)
+    // Own portions are always paid — keep them in selection but don't show them
     for (const p of ownPortions) {
       const key = portionKey(p);
       if (!activeSelectedKeys.includes(key)) activeSelectedKeys.push(key);
     }
 
-    const ownHTML = ownPortions.map(p =>
-      `<div class="settle-portion-row settle-portion-locked">
-         <span class="settle-portion-lock">✓</span>
-         <span class="settle-portion-name">${p.payeeName} <span class="me-tag">${TT('tag.you')}</span> · ${p.billName}</span>
-         <span class="settle-portion-amt">${fmt(p.amount)}</span>
-       </div>`
-    ).join('');
+    if (otherPortions.length === 0) {
+      settlePortionsEl.hidden = true;
+      settlePortionsEl.innerHTML = '';
+      return;
+    }
 
     const selSet = new Set(activeSelectedKeys);
     const othersPreSelected = otherPortions.some(p => selSet.has(portionKey(p)));
-    const othersHTML = otherPortions.length > 0 ? `
+    const othersHTML = `
       <button type="button" class="settle-pay-others-toggle" id="settle-pay-others-toggle">
         <span>${TT('pay.payForOthers')}</span>
         <span class="toggle-caret">${othersPreSelected ? '▲' : '▼'}</span>
@@ -1611,10 +1609,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="settle-portion-amt">${fmt(p.amount)}</span>
           </label>`;
         }).join('')}
-      </div>` : '';
+      </div>`;
 
     settlePortionsEl.hidden = false;
-    settlePortionsEl.innerHTML = ownHTML + othersHTML;
+    settlePortionsEl.innerHTML = othersHTML;
 
     const toggleBtn = settlePortionsEl.querySelector('#settle-pay-others-toggle');
     const othersList = settlePortionsEl.querySelector('#settle-pay-others-list');
