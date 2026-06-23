@@ -2,6 +2,13 @@
 
 Versioning: **major.minor.bugfix** (major = redesign/rebrand, minor = new feature, bugfix = fix).
 
+## 1.3.5 — disable confirm button; fix QR save cache bust
+- **Disable button**: `.btn:disabled` now renders at 40% opacity with `cursor: not-allowed` — the
+  "I have paid this amount" button is visually disabled when no payees are selected or when a slip
+  is required but not yet attached (the logic was already correct; only the visual style was missing).
+- **QR save cache**: bumped `app.js?v=27` so LINE WebView discards the stale `v=26` bundle that
+  still closed the payment dialog before showing the QR overlay. Cache-bust `styles.css?v=32`.
+
 ## 1.3.4 — QR & payment card UX fixes
 - **Layout**: recipient card changed to `align-items: flex-start` so the amount badge and avatar
   top-align cleanly when the "paying for" list wraps to multiple lines.
